@@ -13,6 +13,7 @@ from src.ui.tabs.happy_path import render_happy_path
 from src.ui.tabs.interventions import render_interventions
 from src.ui.tabs.chat import render_chat
 from src.ui.onboarding import maybe_show_onboarding
+from src.utils.persistence import load_session
 
 apply_theme()
 
@@ -61,6 +62,14 @@ defaults = {
 }
 for k, v in defaults.items():
     if k not in st.session_state: st.session_state[k] = v
+
+# Restore the saved chat once per browser session (Feature 4).
+if 'session_loaded' not in st.session_state:
+    saved_ui, saved_chat = load_session()
+    if saved_ui is not None:
+        st.session_state['ui_history'] = saved_ui
+        st.session_state['chat_history'] = saved_chat
+    st.session_state['session_loaded'] = True
 
 def run_analysis(top_pct):
     with st.status("Running analysis…", expanded=True) as status:
