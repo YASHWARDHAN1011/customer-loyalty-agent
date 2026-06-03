@@ -8,6 +8,7 @@ import streamlit as st
 from src.config import API_KEYS, MODEL_ARSENAL
 from src.ui.renderer import render_message
 from src.agent.caller import call_agent
+from src.utils.persistence import save_session, clear_session
 
 
 def render_chat(features, orders):
@@ -50,6 +51,15 @@ def render_chat(features, orders):
             )
 
     st.divider()
+
+    # New conversation — clears the saved session and resets the chat.
+    _, nc_col = st.columns([3, 1])
+    with nc_col:
+        if st.button("🗑️ New conversation", use_container_width=True):
+            clear_session()
+            st.session_state['ui_history'] = []
+            st.session_state['chat_history'] = []
+            st.rerun()
 
     if not st.session_state.ui_history:
         total_users = features['user_id'].nunique()
@@ -103,6 +113,7 @@ def render_chat(features, orders):
             "content": response
         })
 
+        save_session()
         st.rerun()
 
     st.divider()
@@ -177,4 +188,5 @@ def _handle_quick_action(prompt: str):
         "type": "text",
         "content": resp
     })
+    save_session()
     st.rerun()
