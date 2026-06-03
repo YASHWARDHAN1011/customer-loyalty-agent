@@ -1,46 +1,50 @@
-import pandas as pd
+"""
+Standalone data check.
+
+Verifies the 5 raw Instacart CSVs are present under data/instacart/ and parse.
+Large files are sampled with nrows (proving they're valid CSVs) so the check
+stays fast instead of loading ~690MB.
+
+Run from the inner project dir:
+  ..\\venv\\Scripts\\python.exe tests/test_data.py
+"""
+
 import os
+import sys
 
-# Check files exist
-files = [
-    'data/raw/orders.csv',
-    'data/raw/order_products__prior.csv', 
-    'data/raw/products.csv',
-    'data/raw/departments.csv',
-]
+import pandas as pd
 
-print("=== Checking files ===")
-for f in files:
-    if os.path.exists(f):
-        print(f"✅ Found: {f}")
-    else:
-        print(f"❌ Missing: {f}")
+DATA_DIR = 'data/instacart'
+
+# filename -> nrows to read (None = whole file; small files load fully)
+FILES = {
+    'orders.csv': 1000,
+    'order_products__prior.csv': 1000,
+    'products.csv': None,
+    'departments.csv': None,
+    'aisles.csv': None,
+}
+
+failures = []
+
+print("=== Checking files exist ===")
+for name in FILES:
+    path = os.path.join(DATA_DIR, name)
+    ok = os.path.exists(path)
+    print(f"[{'OK ' if ok else 'MISSING'}] {path}")
+    if not ok:
+        failures.append(f"missing {path}")
+
+if failures:
+    print("\nFAILED: raw data missing — see data/instacart/.")
+    sys.exit(1)
 
 print("\n=== Loading and checking data ===")
+for name, nrows in FILES.items():
+    path = os.path.join(DATA_DIR, name)
+    df = pd.read_csv(path, nrows=nrows)
+    suffix = f"(first {nrows:,} rows)" if nrows else f"({len(df):,} rows)"
+    print(f"\n{name} {suffix}")
+    print(f"  Columns: {df.columns.tolist()}")
 
-# Orders
-orders = pd.read_csv('data/raw/orders.csv')
-print(f"\norders.csv:")
-print(f"  Rows: {len(orders):,}")
-print(f"  Columns: {orders.columns.tolist()}")
-print(f"  Unique users: {orders['user_id'].nunique():,}")
-print(orders.head(3))
-
-# Products prior
-prior = pd.read_csv('data/raw/order_products__prior.csv')
-print(f"\norder_products__prior.csv:")
-print(f"  Rows: {len(prior):,}")
-print(f"  Columns: {prior.columns.tolist()}")
-print(prior.head(3))
-
-# Products
-products = pd.read_csv('data/raw/products.csv')
-print(f"\nproducts.csv:")
-print(f"  Rows: {len(products):,}")
-print(f"  Columns: {products.columns.tolist()}")
-print(products.head(3))
-
-# Departments
-departments = pd.read_csv('data/raw/departments.csv')
-print(f"\ndepartments.csv:")
-print(departments)
+print("\nALL CHECKS PASSED.")
