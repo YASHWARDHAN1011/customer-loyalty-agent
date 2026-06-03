@@ -62,14 +62,25 @@ for k, v in defaults.items():
     if k not in st.session_state: st.session_state[k] = v
 
 def run_analysis(top_pct):
-    with st.spinner("Scoring all users..."):
+    with st.status("Running analysis…", expanded=True) as status:
+        st.write(f"⚖️ Scoring all {len(features):,} users…")
         scored = score_users(features, st.session_state['weights'])
+
+        st.write(f"🏆 Selecting top {top_pct}%…")
         power, regular, cutoff = get_power_users(scored, top_pct)
+
+        st.write("📊 Computing segment thresholds…")
+        thresholds = get_thresholds(power, regular)
+
         st.session_state.update({
             'scored_df': scored, 'power': power, 'regular': regular, 'cutoff': cutoff,
-            'thresholds_df': get_thresholds(power, regular), 'power_user_ids': set(power['user_id']),
+            'thresholds_df': thresholds, 'power_user_ids': set(power['user_id']),
             'top_pct': top_pct
         })
+        status.update(
+            label=f"Analysis complete — {len(power):,} power users found",
+            state="complete", expanded=False,
+        )
     st.success(f"✅ Analysis complete — Found **{len(power):,}** power users")
 
 render_sidebar(features, orders, run_analysis)
