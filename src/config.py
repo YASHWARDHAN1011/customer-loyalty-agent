@@ -11,6 +11,20 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
+def _get_secret(name: str):
+    """Read a secret from Streamlit Cloud (st.secrets) first, then local .env.
+
+    st.secrets raises if no secrets.toml exists at all (typical on a dev
+    machine), so the access is guarded — we silently fall back to os.getenv.
+    """
+    try:
+        if name in st.secrets:
+            return st.secrets[name]
+    except Exception:
+        pass
+    return os.getenv(name)
+
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 # API KEY LOADING
 #
@@ -21,7 +35,7 @@ load_dotenv()
 
 API_KEYS = []
 for i in range(1, 11):
-    key = os.getenv(f"GEMINI_KEY_{i}")
+    key = _get_secret(f"GEMINI_KEY_{i}")
     if key:
         API_KEYS.append(key)
 

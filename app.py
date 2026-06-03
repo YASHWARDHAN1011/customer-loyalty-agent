@@ -2,7 +2,7 @@ import streamlit as st
 st.set_page_config(page_title="Customer Loyalty", layout="wide", page_icon="🛒")
 
 from src.ui.renderer import apply_theme
-from src.data.loader import load_data, build_features
+from src.data.loader import get_app_data
 from src.ui.sidebar import render_sidebar
 from src.analysis.scoring import score_users, get_power_users, get_thresholds
 from src.config import MODEL_ARSENAL
@@ -49,8 +49,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-orders, full_data = load_data()
-features = build_features(orders, full_data)
+orders, full_data, features = get_app_data()
 
 defaults = {
     'features': features, 'full_data': full_data, 'chat_history': [], 'ui_history': [],
