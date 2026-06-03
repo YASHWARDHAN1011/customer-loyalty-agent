@@ -12,6 +12,7 @@ from src.ui.tabs.segments import render_segments
 from src.ui.tabs.happy_path import render_happy_path
 from src.ui.tabs.interventions import render_interventions
 from src.ui.tabs.chat import render_chat
+from src.ui.onboarding import maybe_show_onboarding
 
 apply_theme()
 
@@ -84,6 +85,8 @@ def run_analysis(top_pct):
     st.success(f"✅ Analysis complete — Found **{len(power):,}** power users")
 
 render_sidebar(features, orders, run_analysis)
+
+maybe_show_onboarding(run_analysis)
 
 tabs = st.tabs(["📊 Overview", "⚖️ Scoring", "👥 Segments", "🗺️ Happy Path", "🎯 Interventions", "🤖 AI Chat"])
 with tabs[0]: render_overview(features, orders)

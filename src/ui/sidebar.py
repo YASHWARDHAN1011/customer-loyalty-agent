@@ -10,6 +10,7 @@ from datetime import datetime
 from src.config import API_KEYS, MODEL_ARSENAL
 from src.export.generator import generate_csv_export
 from src.export.generator import generate_summary_report
+from src.ui.onboarding import start_tour
 
 
 def render_sidebar(features, orders, run_btn_callback):
@@ -152,11 +153,17 @@ def render_sidebar(features, orders, run_btn_callback):
             st.caption("Run analysis to enable exports")
 
         st.divider()
-        if st.button("🔄 Reset", use_container_width=True):
-            keep = {'model_idx', 'features', 'full_data', 'weights', 'top_pct'}
-            for k in list(st.session_state.keys()):
-                if k not in keep:
-                    del st.session_state[k]
-            st.rerun()
+        c_replay, c_reset = st.columns(2)
+        with c_replay:
+            if st.button("🧭 Replay tour", use_container_width=True):
+                start_tour()
+                st.rerun()
+        with c_reset:
+            if st.button("🔄 Reset", use_container_width=True):
+                keep = {'model_idx', 'features', 'full_data', 'weights', 'top_pct'}
+                for k in list(st.session_state.keys()):
+                    if k not in keep:
+                        del st.session_state[k]
+                st.rerun()
 
     return run_btn
