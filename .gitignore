@@ -7,6 +7,10 @@ __pycache__/
 *.csv
 .ipynb_checkpoints/
 
+# Stray Temp log files with broken path-names (never track)
+*Tempsl_err.txt
+*Tempsl_out.txt
+
 # Runtime state (onboarding flag, saved chat) — never committed
 .app_state/
 
