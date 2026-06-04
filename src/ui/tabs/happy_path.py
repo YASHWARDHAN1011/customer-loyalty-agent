@@ -112,35 +112,24 @@ def render_happy_path(full_data):
 
                         chart = (
                             alt.Chart(funnel_df)
-                            .mark_bar(
-                                color=alt.Gradient(
-                                    gradient='linear',
-                                    stops=[
-                                        alt.GradientStop(color='#f59e0b', offset=0),
-                                        alt.GradientStop(color='#fbbf24', offset=1),
-                                    ],
-                                    x1=0, x2=0, y1=1, y2=0,
-                                ),
-                                cornerRadiusTopLeft=4,
-                                cornerRadiusTopRight=4,
-                            )
+                            .mark_bar(color='#FFD93D', cornerRadius=0, stroke='#0A0A0A', strokeWidth=2)
                             .encode(
                                 x=alt.X('Stage:N', sort=None,
                                          axis=alt.Axis(
-                                             labelColor='rgba(255,255,255,0.35)',
-                                             gridColor='rgba(255,255,255,0.05)',
-                                             domainColor='rgba(255,255,255,0.08)',
+                                             labelColor='#F5F2E6',
+                                             gridColor='rgba(245,242,230,0.12)',
+                                             domainColor='#F5F2E6',
                                          )),
                                 y=alt.Y('Users:Q',
                                          axis=alt.Axis(
-                                             labelColor='rgba(255,255,255,0.35)',
-                                             gridColor='rgba(255,255,255,0.05)',
-                                             domainColor='rgba(255,255,255,0.08)',
+                                             labelColor='#F5F2E6',
+                                             gridColor='rgba(245,242,230,0.12)',
+                                             domainColor='#F5F2E6',
                                          )),
                                 tooltip=['Stage', 'Users', 'Drop']
                             )
                             .properties(height=200)
-                            .configure_view(strokeWidth=0, fill='#050505')
+                            .configure_view(strokeWidth=0, fill='#1F1F23')
                         )
                         st.altair_chart(
                             chart, use_container_width=True

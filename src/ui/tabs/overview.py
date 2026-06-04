@@ -55,31 +55,20 @@ def render_overview(features, orders):
 
         chart = (
             alt.Chart(tmp)
-            .mark_bar(
-                color=alt.Gradient(
-                    gradient='linear',
-                    stops=[
-                        alt.GradientStop(color='#4f6aff', offset=0),
-                        alt.GradientStop(color='#22d4ff', offset=1),
-                    ],
-                    x1=0, x2=0, y1=1, y2=0,
-                ),
-                cornerRadiusTopLeft=4,
-                cornerRadiusTopRight=4,
-            )
+            .mark_bar(color='#FF5C5C', cornerRadius=0, stroke='#0A0A0A', strokeWidth=2)
             .encode(
                 x=alt.X('Range:N', sort=labels,
-                        axis=alt.Axis(labelAngle=0, labelColor='rgba(255,255,255,0.35)',
-                                      gridColor='rgba(255,255,255,0.05)',
-                                      domainColor='rgba(255,255,255,0.08)')),
+                        axis=alt.Axis(labelAngle=0, labelColor='#F5F2E6',
+                                      gridColor='rgba(245,242,230,0.12)',
+                                      domainColor='#F5F2E6')),
                 y=alt.Y('Customers:Q',
-                        axis=alt.Axis(labelColor='rgba(255,255,255,0.35)',
-                                      gridColor='rgba(255,255,255,0.05)',
-                                      domainColor='rgba(255,255,255,0.08)')),
+                        axis=alt.Axis(labelColor='#F5F2E6',
+                                      gridColor='rgba(245,242,230,0.12)',
+                                      domainColor='#F5F2E6')),
                 tooltip=['Range', 'Customers']
             )
             .properties(height=280)
-            .configure_view(strokeWidth=0, fill='#050505')
+            .configure_view(strokeWidth=0, fill='#1F1F23')
         )
         st.altair_chart(chart, use_container_width=True)
 
@@ -105,24 +94,20 @@ def render_overview(features, orders):
         })
         chart = (
             alt.Chart(avg_df)
-            .mark_bar(
-                color='#10b981',
-                cornerRadiusTopLeft=4,
-                cornerRadiusTopRight=4,
-            )
+            .mark_bar(color='#3DDC84', cornerRadius=0, stroke='#0A0A0A', strokeWidth=2)
             .encode(
                 x=alt.X('Feature:N',
-                        axis=alt.Axis(labelAngle=-20, labelColor='rgba(255,255,255,0.35)',
-                                      gridColor='rgba(255,255,255,0.05)',
-                                      domainColor='rgba(255,255,255,0.08)')),
+                        axis=alt.Axis(labelAngle=-20, labelColor='#F5F2E6',
+                                      gridColor='rgba(245,242,230,0.12)',
+                                      domainColor='#F5F2E6')),
                 y=alt.Y('Average:Q',
-                        axis=alt.Axis(labelColor='rgba(255,255,255,0.35)',
-                                      gridColor='rgba(255,255,255,0.05)',
-                                      domainColor='rgba(255,255,255,0.08)')),
+                        axis=alt.Axis(labelColor='#F5F2E6',
+                                      gridColor='rgba(245,242,230,0.12)',
+                                      domainColor='#F5F2E6')),
                 tooltip=['Feature', 'Average']
             )
             .properties(height=280)
-            .configure_view(strokeWidth=0, fill='#050505')
+            .configure_view(strokeWidth=0, fill='#1F1F23')
         )
         st.altair_chart(chart, use_container_width=True)
 

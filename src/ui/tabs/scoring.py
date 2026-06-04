@@ -65,31 +65,20 @@ def render_scoring():
             })
             chart = (
                 alt.Chart(hist_df)
-                .mark_bar(
-                    color=alt.Gradient(
-                        gradient='linear',
-                        stops=[
-                            alt.GradientStop(color='#4f6aff', offset=0),
-                            alt.GradientStop(color='#8b5cf6', offset=1),
-                        ],
-                        x1=0, x2=0, y1=1, y2=0,
-                    ),
-                    cornerRadiusTopLeft=4,
-                    cornerRadiusTopRight=4,
-                )
+                .mark_bar(color='#B9A4FF', cornerRadius=0, stroke='#0A0A0A', strokeWidth=2)
                 .encode(
                     x=alt.X('Score:N', sort=None,
-                             axis=alt.Axis(labelColor='rgba(255,255,255,0.35)',
-                                           gridColor='rgba(255,255,255,0.05)',
-                                           domainColor='rgba(255,255,255,0.08)')),
+                             axis=alt.Axis(labelColor='#F5F2E6',
+                                           gridColor='rgba(245,242,230,0.12)',
+                                           domainColor='#F5F2E6')),
                     y=alt.Y('Customers:Q',
-                             axis=alt.Axis(labelColor='rgba(255,255,255,0.35)',
-                                           gridColor='rgba(255,255,255,0.05)',
-                                           domainColor='rgba(255,255,255,0.08)')),
+                             axis=alt.Axis(labelColor='#F5F2E6',
+                                           gridColor='rgba(245,242,230,0.12)',
+                                           domainColor='#F5F2E6')),
                     tooltip=['Score', 'Customers']
                 )
                 .properties(height=280)
-                .configure_view(strokeWidth=0, fill='#050505')
+                .configure_view(strokeWidth=0, fill='#1F1F23')
             )
             st.altair_chart(chart, use_container_width=True)
 
@@ -121,28 +110,25 @@ def render_scoring():
                 'Loyal', 'Power User'
             ]
             tier_colors = [
-                '#64748b', '#3b82f6', '#10b981',
-                '#f59e0b', '#ef4444'
+                '#C9C4BA', '#5B8DEF', '#3DDC84',
+                '#FFD93D', '#FF5C5C'
             ]
 
             chart = (
                 alt.Chart(tier_df)
-                .mark_bar(
-                    cornerRadiusTopLeft=4,
-                    cornerRadiusTopRight=4,
-                )
+                .mark_bar(cornerRadius=0, stroke='#0A0A0A', strokeWidth=2)
                 .encode(
                     x=alt.X(
                         'Tier:N',
                         sort=tier_order,
-                        axis=alt.Axis(labelAngle=0, labelColor='rgba(255,255,255,0.35)',
-                                      gridColor='rgba(255,255,255,0.05)',
-                                      domainColor='rgba(255,255,255,0.08)')
+                        axis=alt.Axis(labelAngle=0, labelColor='#F5F2E6',
+                                      gridColor='rgba(245,242,230,0.12)',
+                                      domainColor='#F5F2E6')
                     ),
                     y=alt.Y('Customers:Q',
-                             axis=alt.Axis(labelColor='rgba(255,255,255,0.35)',
-                                           gridColor='rgba(255,255,255,0.05)',
-                                           domainColor='rgba(255,255,255,0.08)')),
+                             axis=alt.Axis(labelColor='#F5F2E6',
+                                           gridColor='rgba(245,242,230,0.12)',
+                                           domainColor='#F5F2E6')),
                     color=alt.Color(
                         'Tier:N',
                         sort=tier_order,
@@ -152,7 +138,7 @@ def render_scoring():
                     tooltip=['Tier', 'Customers']
                 )
                 .properties(height=280)
-                .configure_view(strokeWidth=0, fill='#050505')
+                .configure_view(strokeWidth=0, fill='#1F1F23')
             )
             st.altair_chart(chart, use_container_width=True)
 

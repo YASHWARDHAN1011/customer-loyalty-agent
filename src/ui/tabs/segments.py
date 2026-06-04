@@ -72,34 +72,31 @@ def render_segments():
 
             chart = (
                 alt.Chart(pd.DataFrame(compare_data))
-                .mark_bar(
-                    cornerRadiusTopLeft=4,
-                    cornerRadiusTopRight=4,
-                )
+                .mark_bar(cornerRadius=0, stroke='#0A0A0A', strokeWidth=1.5)
                 .encode(
                     x=alt.X('Feature:N',
                             axis=alt.Axis(
                                 labelAngle=-20, title='',
-                                labelColor='rgba(255,255,255,0.35)',
-                                gridColor='rgba(255,255,255,0.05)',
-                                domainColor='rgba(255,255,255,0.08)',
+                                labelColor='#F5F2E6',
+                                gridColor='rgba(245,242,230,0.12)',
+                                domainColor='#F5F2E6',
                             )),
                     y=alt.Y('Value:Q',
                              axis=alt.Axis(
-                                 labelColor='rgba(255,255,255,0.35)',
-                                 gridColor='rgba(255,255,255,0.05)',
-                                 domainColor='rgba(255,255,255,0.08)',
+                                 labelColor='#F5F2E6',
+                                 gridColor='rgba(245,242,230,0.12)',
+                                 domainColor='#F5F2E6',
                              )),
                     xOffset='Segment:N',
                     color=alt.Color(
                         'Segment:N',
-                        scale=alt.Scale(range=['#4f6aff', '#1e3a5f']),
-                        legend=alt.Legend(labelColor='rgba(255,255,255,0.35)', titleColor='rgba(255,255,255,0.35)'),
+                        scale=alt.Scale(range=['#FF5C5C', '#B9A4FF']),
+                        legend=alt.Legend(labelColor='#F5F2E6', titleColor='#F5F2E6'),
                     ),
                     tooltip=['Feature', 'Segment', 'Value']
                 )
                 .properties(height=300)
-                .configure_view(strokeWidth=0, fill='#050505')
+                .configure_view(strokeWidth=0, fill='#1F1F23')
             )
             st.altair_chart(chart, use_container_width=True)
 
@@ -116,22 +113,22 @@ def render_segments():
 
             donut = (
                 alt.Chart(segment_data)
-                .mark_arc(innerRadius=70, outerRadius=120)
+                .mark_arc(innerRadius=70, outerRadius=120, stroke='#0A0A0A', strokeWidth=3)
                 .encode(
                     theta=alt.Theta('Count:Q'),
                     color=alt.Color(
                         'Segment:N',
-                        scale=alt.Scale(range=['#4f6aff', '#1e3a5f']),
+                        scale=alt.Scale(range=['#FF5C5C', '#B9A4FF']),
                         legend=alt.Legend(
                             orient='bottom',
-                            labelColor='rgba(255,255,255,0.35)',
-                            titleColor='rgba(255,255,255,0.35)',
+                            labelColor='#F5F2E6',
+                            titleColor='#F5F2E6',
                         ),
                     ),
                     tooltip=['Segment', 'Count', 'Percentage']
                 )
                 .properties(height=300)
-                .configure_view(strokeWidth=0, fill='#050505')
+                .configure_view(strokeWidth=0, fill='#1F1F23')
             )
             st.altair_chart(donut, use_container_width=True)
 
