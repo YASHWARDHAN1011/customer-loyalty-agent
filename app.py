@@ -19,34 +19,38 @@ apply_theme()
 
 st.markdown("""
 <div style="
-    display:flex; align-items:center; gap:16px;
-    padding: 1.2rem 0 1rem;
-    margin-bottom: 0.5rem;
-    border-bottom: 1px solid rgba(255,255,255,0.07);
+    display:flex; align-items:center; gap:18px;
+    padding: 0.6rem 1.2rem 0.8rem;
+    margin-bottom: 1.4rem;
+    background:#1F1F23;
+    border:4px solid #F5F2E6;
+    box-shadow:8px 8px 0 #F5F2E6;
 ">
     <div style="
-        width:46px; height:46px; flex-shrink:0;
-        background: linear-gradient(135deg, rgba(79,106,255,0.22), rgba(34,212,255,0.12));
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        border: 1px solid rgba(79,106,255,0.30);
-        border-radius:14px;
+        width:58px; height:58px; flex-shrink:0;
+        background:#FFD93D;
+        border:4px solid #0A0A0A;
+        box-shadow:4px 4px 0 #0A0A0A;
         display:flex; align-items:center; justify-content:center;
-        font-size:1.4rem;
-        box-shadow:
-            0 4px 16px rgba(0,0,0,0.25),
-            inset 0 1px 0 rgba(255,255,255,0.14),
-            0 0 22px rgba(79,106,255,0.22);
+        font-size:1.8rem;
+        transform:rotate(-3deg);
     ">🛒</div>
     <div>
         <div style="
-            font-size:1.38rem; font-weight:800;
-            letter-spacing:-0.035em; line-height:1.1;
-            color: rgba(255,255,255,0.92);
+            font-family:'Space Grotesk',sans-serif;
+            font-size:1.65rem; font-weight:700;
+            letter-spacing:-0.04em; line-height:1.0;
+            text-transform:uppercase;
+            color:#F5F2E6;
         ">Customer Loyalty Intelligence</div>
-        <div style="color:rgba(255,255,255,0.28); font-size:0.78rem; font-weight:500; margin-top:3px; letter-spacing:0.02em;">
-            Instacart dataset &nbsp;&middot;&nbsp; 206,209 customers &nbsp;&middot;&nbsp; 3.4M orders
-        </div>
+        <div style="
+            display:inline-block; margin-top:7px;
+            background:#FF5C5C; border:2.5px solid #0A0A0A;
+            box-shadow:2px 2px 0 #0A0A0A;
+            color:#0A0A0A; font-family:'Space Mono',monospace;
+            font-size:0.7rem; font-weight:700; letter-spacing:0.04em;
+            padding:2px 9px; text-transform:uppercase;
+        ">Instacart &nbsp;//&nbsp; 206,209 customers &nbsp;//&nbsp; 3.4M orders</div>
     </div>
 </div>
 """, unsafe_allow_html=True)

@@ -10,6 +10,35 @@ This file has two jobs:
 
 ## 📓 Project Journal
 
+### 2026-06-04 — Neo-brutalist theme → DARK variant
+Flipped the brutalist theme from light/cream to **dark**, keeping the same pop
+color scheme (red/yellow/violet/mint):
+- **Canvas:** near-black `#141416` + faint light dot-grid; surfaces `#1F1F23`.
+- **Ink:** off-white `#F5F2E6` for borders, hard offset shadows, and body text
+  (so the brutalist outline/shadow reads on a dark bg). Bright accent blocks
+  (h2, primary/download buttons, selected tab, badges, code) keep **dark**
+  (`#0A0A0A`, `--on-accent`) text + borders for contrast.
+- Charts: dark panel fill `#1F1F23`, off-white axes/grid; bars stay bright
+  accents with black strokes. `.streamlit/config.toml` base flipped to `dark`
+  so Streamlit-internal widgets (dataframe, dropdowns) match.
+- Same files as the redesign below + `.streamlit/config.toml`. Booted HTTP 200.
+
+### 2026-06-04 — Drastic redesign → NEO-BRUTALIST POP
+Replaced the dark "calm glass aurora" look with a loud neo-brutalist theme
+(chosen from the ui-ux-pro-max library). Originally light/cream; see the dark
+variant entry above for the current canvas.
+- **Canvas:** cream `#FFFDF5` with a faint pop dot-grid; ink `#0A0A0A` text.
+- **Palette:** hot red `#FF5C5C`, vivid yellow `#FFD93D`, soft violet `#B9A4FF`,
+  mint `#3DDC84` — solid color blocking, no gradients/blur.
+- **Borders/shadows:** 4px black borders + hard offset shadows (`6/8px 0`, no blur).
+  Buttons/tabs/metrics use a mechanical press (translate on click).
+- **Type:** Space Grotesk (display) + Space Mono (labels/data), replacing Inter.
+- All Altair charts recolored to solid brutalist fills with 2px black strokes on a
+  white panel; `color_ratio()` and the intervention cards rebuilt in the new key.
+- Files touched: `src/ui/renderer.py` (full `apply_theme` + card + chart helpers),
+  `app.py` (header block), and the chart blocks in `tabs/{overview,scoring,segments,happy_path}.py`.
+- Booted headless cleanly (HTTP 200). Light-first only — no dark mode.
+
 ### 2026-06-04 — Published to GitHub + doc cleanup
 - Created public repo **github.com/YASHWARDHAN1011/customer-loyalty-agent** and pushed everything.
 - Removed stray `Tempsl` junk files from tracking and gitignored them.
