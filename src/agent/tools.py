@@ -29,6 +29,13 @@ from src.analysis.segmentation import compute_segment_gaps, build_comparison_dat
 from src.analysis.interventions import INTERVENTION_TEMPLATES, compute_intervention_gaps
 from src.analysis.metrics import calculate_churn_risk
 
+import uuid
+from datetime import date
+from src.agent.deliverables import (
+    select_target_users, to_csv_bytes,
+    campaign_emails_markdown, action_plan_markdown,
+)
+
 
 def run_scoring_analysis(top_percentile: int = 10) -> dict:
     """
@@ -576,6 +583,149 @@ def search_users(
     }
 
 
+def _add_artifact(filename: str, mime: str, content, label: str) -> str:
+    """Store a downloadable artifact in session_state and append a chat entry."""
+    art_id = uuid.uuid4().hex[:8]
+    art = {
+        "id": art_id, "filename": filename,
+        "mime": mime, "content": content, "label": label,
+    }
+    st.session_state.setdefault('artifacts', []).append(art)
+    st.session_state.ui_history.append({
+        "role": "assistant", "type": "artifact",
+        "filename": filename, "mime": mime,
+        "content": content, "label": label, "artifact_id": art_id,
+    })
+    return art_id
+
+
+def export_target_list(
+    segment: str = None,
+    min_orders: int = None,
+    churn_days: int = None,
+    limit: int = 500,
+) -> dict:
+    """
+    Exports a downloadable CSV of the exact customers to target for a campaign.
+
+    Use this when the user wants a list/export/file of users to contact, a
+    target list for a campaign, or to "pull the users" matching a segment or
+    churn threshold.
+
+    Args:
+        segment: 'power' or 'regular' to restrict the list.
+        min_orders: only include users with at least this many orders.
+        churn_days: only include users whose avg days between orders >= this.
+        limit: max rows in the CSV (default 500).
+    """
+    features = st.session_state.get('features')
+    if features is None:
+        return {"error": "Data not loaded yet."}
+
+    scored = st.session_state.get('scored_df')
+    power_ids = st.session_state.get('power_user_ids', set())
+
+    target = select_target_users(
+        features, scored, power_ids,
+        segment=segment, min_orders=min_orders,
+        churn_days=churn_days, limit=limit,
+    )
+    if target.empty:
+        return {
+            "status": "no_results",
+            "instruction": "Tell the user no customers matched their criteria.",
+        }
+
+    _add_artifact(
+        "target_list.csv", "text/csv", to_csv_bytes(target),
+        f"🎯 Target list — {len(target):,} users",
+    )
+    return {
+        "status": "success",
+        "target_count": int(len(target)),
+        "filename": "target_list.csv",
+        "instruction": (
+            "Tell the user their target-list CSV is ready to download and "
+            "how many customers it contains."
+        ),
+    }
+
+
+def draft_campaign_emails(segment: str = None) -> dict:
+    """
+    Writes downloadable campaign email drafts, personalized to the biggest
+    behavioral gaps between power users and regular users.
+
+    Use this when the user asks to draft/write emails, create campaign copy,
+    or generate outreach messages.
+
+    Args:
+        segment: optional label noted in the brief (e.g. 'regular', 'power').
+    """
+    power = st.session_state.get('power')
+    regular = st.session_state.get('regular')
+    if power is None:
+        return {
+            "error": "Run scoring analysis first.",
+            "instruction": "Tell the user to run scoring before drafting emails.",
+        }
+
+    gaps = compute_intervention_gaps(power, regular)
+    md = campaign_emails_markdown(gaps, INTERVENTION_TEMPLATES)
+    _add_artifact("campaign_emails.md", "text/markdown", md,
+                  "✉️ Campaign email drafts")
+    return {
+        "status": "success",
+        "filename": "campaign_emails.md",
+        "instruction": (
+            "Tell the user the email drafts are ready to download and name "
+            "the top campaign they cover."
+        ),
+    }
+
+
+def build_action_plan(churn_days: int = 30) -> dict:
+    """
+    Compiles a downloadable, prioritized retention action checklist combining
+    the biggest behavioral gaps with the current churn-risk snapshot.
+
+    Use this when the user wants a plan, a checklist, a to-do list, next steps,
+    or "what should we do" as a deliverable.
+
+    Args:
+        churn_days: days-without-order threshold for the churn snapshot.
+    """
+    power = st.session_state.get('power')
+    regular = st.session_state.get('regular')
+    features = st.session_state.get('features')
+    if power is None or features is None:
+        return {
+            "error": "Run scoring analysis first.",
+            "instruction": "Tell the user to run scoring before the action plan.",
+        }
+
+    gaps = compute_intervention_gaps(power, regular)
+    power_ids = st.session_state.get('power_user_ids', set())
+    at_risk, at_risk_power = calculate_churn_risk(features, power_ids, churn_days)
+
+    md = action_plan_markdown(
+        gaps, INTERVENTION_TEMPLATES,
+        at_risk_count=len(at_risk), at_risk_power=len(at_risk_power),
+        date_str=date.today().isoformat(),
+    )
+    _add_artifact("action_plan.md", "text/markdown", md,
+                  "✅ Retention action plan")
+    return {
+        "status": "success",
+        "filename": "action_plan.md",
+        "at_risk": int(len(at_risk)),
+        "instruction": (
+            "Tell the user the action plan is ready to download and summarize "
+            "its single highest-priority item."
+        ),
+    }
+
+
 # All tools Gemini can call
 ALL_TOOLS = [
     run_scoring_analysis,
@@ -585,5 +735,8 @@ ALL_TOOLS = [
     analyze_churn_risk,
     get_user_profile,
     search_users,
-    get_current_stats
+    get_current_stats,
+    export_target_list,
+    draft_campaign_emails,
+    build_action_plan,
 ]
