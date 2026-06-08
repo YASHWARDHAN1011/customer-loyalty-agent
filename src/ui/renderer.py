@@ -181,6 +181,17 @@ def render_intervention_card(t, gap_pct, ru_avg, pu_avg, mid, count):
 
 # ── Message / Chart Renderer ──────────────────────────────────────────────────
 
+def download_key() -> str:
+    """Monotonic unique key for st.download_button.
+
+    st.tabs renders every tab body on each run, so the same artifact can be
+    drawn in more than one place in a single pass. A monotonic counter
+    guarantees a unique key per button within any single render.
+    """
+    st.session_state['_dl_counter'] = st.session_state.get('_dl_counter', 0) + 1
+    return f"dl_{st.session_state['_dl_counter']}"
+
+
 def render_message(msg: dict):
     with st.chat_message(msg["role"]):
         if msg["type"] == "text":
@@ -234,6 +245,15 @@ def render_message(msg: dict):
                     .configure_view(strokeWidth=0, fill=PAPER)
                 )
                 st.altair_chart(chart, use_container_width=True)
+
+        elif msg["type"] == "artifact":
+            st.download_button(
+                label=msg.get("label", "⬇️ Download"),
+                data=msg["content"],
+                file_name=msg["filename"],
+                mime=msg["mime"],
+                key=download_key(),
+            )
 
 
 # ── Table Styling Helper ──────────────────────────────────────────────────────

@@ -62,6 +62,7 @@ defaults = {
     'model_idx': 0, 'scored_df': None, 'power': None, 'regular': None, 'cutoff': None,
     'thresholds_df': None, 'power_user_ids': set(), 'top_pct': 10,
     'weights': {'total_orders': 0.30, 'reorder_rate': 0.25, 'dept_diversity': 0.20, 'avg_basket_size': 0.15, 'total_items': 0.10},
+    'artifacts': [],
     'active_model': MODEL_ARSENAL[0]['label'] if MODEL_ARSENAL else 'None'
 }
 for k, v in defaults.items():
