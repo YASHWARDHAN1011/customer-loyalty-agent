@@ -32,7 +32,7 @@ def render_happy_path(full_data):
             st.caption(
                 f"Will trace first **{lookback}** orders "
                 f"for **{len(st.session_state['power_user_ids']):,}** "
-                f"power users (~1 minute)"
+                f"power users (~10 seconds)"
             )
 
         if run_path_btn:
