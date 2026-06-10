@@ -10,6 +10,23 @@ This file has two jobs:
 
 ## 📓 Project Journal
 
+### 2026-06-08 — Agentic tools + Autopilot
+Turned the chat agent into a goal-driven agent with downloadable deliverables.
+- **Deliverable tools** (`src/agent/deliverables.py` pure builders +
+  `src/agent/tools.py` wrappers): `export_target_list` (CSV of target users),
+  `draft_campaign_emails` (markdown drafts), `build_action_plan` (dated
+  checklist). Each stores a downloadable artifact in
+  `st.session_state.artifacts` and appends a `type="artifact"` chat entry.
+- **Autopilot** (`src/agent/orchestrator.py` + `src/ui/tabs/autopilot.py`,
+  new 7th tab): a goal is planned by Gemini into a JSON tool plan
+  (`plan_goal`, with a parse fallback ladder to `DEFAULT_PLAN`), executed
+  step-by-step with a live `st.status` log (`execute_plan`), then summarized
+  (`synthesize_goal`). `TOOL_REGISTRY` is the shared catalog/executor source.
+- **Caller refactor:** extracted `generate()` (key×model failover) from
+  `call_agent`; chat and orchestrator now share it.
+- Tests: `tests/test_deliverables.py`, `tests/test_orchestrator.py` (no network).
+  App boots headless HTTP 200.
+
 ### 2026-06-04 — Neo-brutalist theme → DARK variant
 Flipped the brutalist theme from light/cream to **dark**, keeping the same pop
 color scheme (red/yellow/violet/mint):
