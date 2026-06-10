@@ -21,3 +21,6 @@ __pycache__/
 # Only *.csv is ignored above, so data/artifacts/*.parquet is tracked by default.
 !data/artifacts/
 !data/artifacts/*.parquet
+
+# Local Claude Code skills/config
+.claude/
