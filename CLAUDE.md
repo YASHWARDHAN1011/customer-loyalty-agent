@@ -10,6 +10,24 @@ This file has two jobs:
 
 ## 📓 Project Journal
 
+### 2026-06-11 — Recolor: navy + cream + red palette
+Reskinned the whole app onto a 4-color palette while keeping the neo-brutalist
+structure and chart readability:
+- **Tokens:** canvas navy `#002F49`, lifted surfaces `#0A3D5C`, deep inset
+  `#00263C`, cream "ink" `#FEF0D5` (every border/shadow/text/axis), interactive
+  red `#C1121F`, structural oxblood `#780001`. Cream is now the single line color
+  and also the on-accent text (all accents are dark-red, so cream reads on them).
+  Rewrote `:root` in `renderer.py`, the palette consts, the intervention-card
+  severity ramp (oxblood→`#8E1D1D`→red), `color_ratio` (teal), the `app.py`
+  header block, and `.streamlit/config.toml`.
+- **Charts (kept fully legible):** panels are the lifted navy with cream axes and
+  near-black-navy `#00141F` mark outlines. Fills use brand red + cream plus three
+  harmonious helpers so multi-series stay distinct — 5-tier bar =
+  steel·teal·amber·orange·red; 2-series bar + donut = red vs cream; single bars =
+  red / teal / amber / steel across overview, scoring, segments, happy_path.
+- All touched files byte-compile; app boots headless HTTP 200. (Visual look +
+  onboarding dialog still want a human glance in the browser.)
+
 ### 2026-06-08 — Agentic tools + Autopilot
 Turned the chat agent into a goal-driven agent with downloadable deliverables.
 - **Deliverable tools** (`src/agent/deliverables.py` pure builders +

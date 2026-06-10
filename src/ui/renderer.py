@@ -13,18 +13,28 @@ import streamlit as st
 import altair as alt
 
 
-# ── Brutalist palette (shared with tab charts) ────────────────────────────────
+# ── Brutalist palette — NAVY + CREAM + RED (shared with tab charts) ────────────
 
-INK       = "#F5F2E6"   # off-white: borders, hard shadows, body text
-ON_ACCENT = "#0A0A0A"   # dark ink: text/strokes that sit on bright accent fills
-CREAM     = "#141416"   # app canvas + inset boxes
-PAPER     = "#1F1F23"   # card / panel surfaces
-RED       = "#FF5C5C"
-YELLOW    = "#FFD93D"
-VIOLET    = "#B9A4FF"
-MINT      = "#3DDC84"
-BLUE      = "#5B8DEF"
-GRID      = "rgba(245,242,230,0.12)"
+INK       = "#FEF0D5"   # cream: borders, hard shadows, body text, chart axes
+ON_ACCENT = "#FEF0D5"   # cream: text/strokes that sit on the dark-red accent fills
+CREAM     = "#00263C"   # deep-navy inset boxes (legacy name kept for callers)
+PAPER     = "#0A3D5C"   # card / panel surfaces (lifted navy)
+CANVAS    = "#002F49"   # app navy ground
+RED       = "#C1121F"   # primary interactive accent
+OXBLOOD   = "#780001"   # deep structural accent (headings, hovers, code)
+STROKE    = "#00141F"   # near-black navy: chart mark outlines
+# Chart-only helper hues — bright on the navy panel so multi-series stay legible.
+CREAMFILL = "#FEF0D5"
+AMBER     = "#F4C430"
+TEAL      = "#2EC4B6"
+STEEL     = "#6FB3D9"
+ORANGE    = "#E8693C"
+# Back-compat aliases for any caller still importing the old accent names.
+YELLOW    = AMBER
+VIOLET    = STEEL
+MINT      = TEAL
+BLUE      = STEEL
+GRID      = "rgba(254,240,213,0.12)"
 
 
 def brutal_axis(**overrides):
@@ -50,7 +60,7 @@ def brutal_bar(data, x, y, color=RED, height=280, label_angle=0, tooltip=None):
     """A solid, black-outlined brutalist bar chart on a dark panel."""
     return (
         alt.Chart(data)
-        .mark_bar(cornerRadius=0, stroke=ON_ACCENT, strokeWidth=2, color=color)
+        .mark_bar(cornerRadius=0, stroke=STROKE, strokeWidth=2, color=color)
         .encode(
             x=alt.X(x, sort=None, axis=alt.Axis(labelAngle=label_angle, **brutal_axis())),
             y=alt.Y(y, axis=alt.Axis(**brutal_axis())),
@@ -65,8 +75,8 @@ def brutal_bar(data, x, y, color=RED, height=280, label_angle=0, tooltip=None):
 # ── Intervention Card ─────────────────────────────────────────────────────────
 
 def render_intervention_card(t, gap_pct, ru_avg, pu_avg, mid, count):
-    # Severity drives the block accent color (dark text stays on all of them).
-    accent = RED if gap_pct >= 80 else YELLOW if gap_pct >= 60 else MINT
+    # Severity drives the block accent color (cream text stays on all of them).
+    accent = RED if gap_pct >= 80 else "#8E1D1D" if gap_pct >= 60 else OXBLOOD
     tilt   = "-0.6deg"
 
     st.markdown(
@@ -209,7 +219,7 @@ def render_message(msg: dict):
             if msg["chart_type"] == "bar":
                 chart = (
                     alt.Chart(data)
-                    .mark_bar(cornerRadius=0, stroke=ON_ACCENT, strokeWidth=2, color=RED)
+                    .mark_bar(cornerRadius=0, stroke=STROKE, strokeWidth=2, color=RED)
                     .encode(
                         x=alt.X(msg["x"], sort=None,
                                 axis=alt.Axis(labelAngle=-45, **brutal_axis())),
@@ -224,7 +234,7 @@ def render_message(msg: dict):
             elif msg["chart_type"] == "grouped_bar":
                 chart = (
                     alt.Chart(data)
-                    .mark_bar(cornerRadius=0, stroke=ON_ACCENT, strokeWidth=1.5)
+                    .mark_bar(cornerRadius=0, stroke=STROKE, strokeWidth=1.5)
                     .encode(
                         x=alt.X(f"{msg['x']}:N",
                                 axis=alt.Axis(labelAngle=-30, title="", **brutal_axis())),
@@ -232,7 +242,7 @@ def render_message(msg: dict):
                         xOffset=f"{msg['color']}:N",
                         color=alt.Color(
                             f"{msg['color']}:N",
-                            scale=alt.Scale(range=[RED, VIOLET]),
+                            scale=alt.Scale(range=[RED, CREAMFILL]),
                             legend=alt.Legend(
                                 title="SEGMENT",
                                 labelColor=INK, titleColor=INK,
@@ -260,11 +270,11 @@ def render_message(msg: dict):
 
 def color_ratio(val):
     if val >= 3:
-        return f"background-color:{MINT}; color:{ON_ACCENT}; font-weight:700"
+        return f"background-color:{TEAL}; color:{STROKE}; font-weight:700"
     elif val >= 2:
-        return "background-color:rgba(61,220,132,0.45); color:#F5F2E6; font-weight:600"
+        return "background-color:rgba(46,196,182,0.45); color:#FEF0D5; font-weight:600"
     elif val >= 1.5:
-        return "background-color:rgba(61,220,132,0.20); color:#F5F2E6"
+        return "background-color:rgba(46,196,182,0.20); color:#FEF0D5"
     return ""
 
 
@@ -280,15 +290,16 @@ def apply_theme():
    DESIGN TOKENS — NEO-BRUTALIST POP (DARK)
 ══════════════════════════════════════════════════ */
 :root {
-  --ink:       #F5F2E6;   /* off-white lines / shadows / text       */
-  --on-accent: #0A0A0A;   /* dark text/strokes on bright accents    */
-  --canvas:    #141416;   /* app background + inset boxes           */
-  --paper:     #1F1F23;   /* card / panel surfaces                  */
-  --red:       #FF5C5C;
-  --yellow:    #FFD93D;
-  --violet:    #B9A4FF;
-  --mint:      #3DDC84;
-  --blue:      #5B8DEF;
+  --ink:       #FEF0D5;   /* cream lines / shadows / text           */
+  --on-accent: #FEF0D5;   /* cream text/strokes on the dark-red accents */
+  --canvas:    #002F49;   /* app navy ground                        */
+  --paper:     #0A3D5C;   /* card / panel surfaces (lifted navy)    */
+  --inset:     #00263C;   /* deep-navy inset boxes                  */
+  --red:       #C1121F;   /* primary interactive accent             */
+  --yellow:    #780001;   /* deep structural accent (was yellow)    */
+  --violet:    #780001;   /* hover accent (was violet)              */
+  --mint:      #2EC4B6;   /* positive teal (charts/tables)          */
+  --blue:      #6FB3D9;   /* steel (charts)                         */
 
   --font:  'Space Grotesk', system-ui, sans-serif;
   --mono:  'Space Mono', ui-monospace, monospace;
@@ -310,7 +321,7 @@ html, body { background: var(--canvas) !important; }
 .stApp {
   background-color: var(--canvas) !important;
   background-image:
-    radial-gradient(rgba(245,242,230,0.06) 1.4px, transparent 1.4px);
+    radial-gradient(rgba(254,240,213,0.06) 1.4px, transparent 1.4px);
   background-size: 22px 22px !important;
   background-attachment: fixed !important;
   font-family: var(--font) !important;
@@ -558,7 +569,7 @@ code {
   box-shadow: 6px 6px 0 var(--on-accent) !important;
 }
 .stDownloadButton > button:hover {
-  background: var(--mint) !important;
+  background: var(--red) !important;
   color: var(--on-accent) !important;
   transform: translate(-2px,-2px) !important;
   box-shadow: 8px 8px 0 var(--on-accent) !important;

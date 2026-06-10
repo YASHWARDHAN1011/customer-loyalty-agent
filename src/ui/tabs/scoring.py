@@ -65,20 +65,20 @@ def render_scoring():
             })
             chart = (
                 alt.Chart(hist_df)
-                .mark_bar(color='#B9A4FF', cornerRadius=0, stroke='#0A0A0A', strokeWidth=2)
+                .mark_bar(color='#6FB3D9', cornerRadius=0, stroke='#00141F', strokeWidth=2)
                 .encode(
                     x=alt.X('Score:N', sort=None,
-                             axis=alt.Axis(labelColor='#F5F2E6',
-                                           gridColor='rgba(245,242,230,0.12)',
-                                           domainColor='#F5F2E6')),
+                             axis=alt.Axis(labelColor='#FEF0D5',
+                                           gridColor='rgba(254,240,213,0.12)',
+                                           domainColor='#FEF0D5')),
                     y=alt.Y('Customers:Q',
-                             axis=alt.Axis(labelColor='#F5F2E6',
-                                           gridColor='rgba(245,242,230,0.12)',
-                                           domainColor='#F5F2E6')),
+                             axis=alt.Axis(labelColor='#FEF0D5',
+                                           gridColor='rgba(254,240,213,0.12)',
+                                           domainColor='#FEF0D5')),
                     tooltip=['Score', 'Customers']
                 )
                 .properties(height=280)
-                .configure_view(strokeWidth=0, fill='#1F1F23')
+                .configure_view(strokeWidth=0, fill='#0A3D5C')
             )
             st.altair_chart(chart, use_container_width=True)
 
@@ -110,25 +110,25 @@ def render_scoring():
                 'Loyal', 'Power User'
             ]
             tier_colors = [
-                '#C9C4BA', '#5B8DEF', '#3DDC84',
-                '#FFD93D', '#FF5C5C'
+                '#6FB3D9', '#2EC4B6', '#F4C430',
+                '#E8693C', '#C1121F'
             ]
 
             chart = (
                 alt.Chart(tier_df)
-                .mark_bar(cornerRadius=0, stroke='#0A0A0A', strokeWidth=2)
+                .mark_bar(cornerRadius=0, stroke='#00141F', strokeWidth=2)
                 .encode(
                     x=alt.X(
                         'Tier:N',
                         sort=tier_order,
-                        axis=alt.Axis(labelAngle=0, labelColor='#F5F2E6',
-                                      gridColor='rgba(245,242,230,0.12)',
-                                      domainColor='#F5F2E6')
+                        axis=alt.Axis(labelAngle=0, labelColor='#FEF0D5',
+                                      gridColor='rgba(254,240,213,0.12)',
+                                      domainColor='#FEF0D5')
                     ),
                     y=alt.Y('Customers:Q',
-                             axis=alt.Axis(labelColor='#F5F2E6',
-                                           gridColor='rgba(245,242,230,0.12)',
-                                           domainColor='#F5F2E6')),
+                             axis=alt.Axis(labelColor='#FEF0D5',
+                                           gridColor='rgba(254,240,213,0.12)',
+                                           domainColor='#FEF0D5')),
                     color=alt.Color(
                         'Tier:N',
                         sort=tier_order,
@@ -138,7 +138,7 @@ def render_scoring():
                     tooltip=['Tier', 'Customers']
                 )
                 .properties(height=280)
-                .configure_view(strokeWidth=0, fill='#1F1F23')
+                .configure_view(strokeWidth=0, fill='#0A3D5C')
             )
             st.altair_chart(chart, use_container_width=True)
 

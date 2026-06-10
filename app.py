@@ -23,15 +23,15 @@ st.markdown("""
     display:flex; align-items:center; gap:18px;
     padding: 0.6rem 1.2rem 0.8rem;
     margin-bottom: 1.4rem;
-    background:#1F1F23;
-    border:4px solid #F5F2E6;
-    box-shadow:8px 8px 0 #F5F2E6;
+    background:#0A3D5C;
+    border:4px solid #FEF0D5;
+    box-shadow:8px 8px 0 #FEF0D5;
 ">
     <div style="
         width:58px; height:58px; flex-shrink:0;
-        background:#FFD93D;
-        border:4px solid #0A0A0A;
-        box-shadow:4px 4px 0 #0A0A0A;
+        background:#780001;
+        border:4px solid #FEF0D5;
+        box-shadow:4px 4px 0 #FEF0D5;
         display:flex; align-items:center; justify-content:center;
         font-size:1.8rem;
         transform:rotate(-3deg);
@@ -42,13 +42,13 @@ st.markdown("""
             font-size:1.65rem; font-weight:700;
             letter-spacing:-0.04em; line-height:1.0;
             text-transform:uppercase;
-            color:#F5F2E6;
+            color:#FEF0D5;
         ">Customer Loyalty Intelligence</div>
         <div style="
             display:inline-block; margin-top:7px;
-            background:#FF5C5C; border:2.5px solid #0A0A0A;
-            box-shadow:2px 2px 0 #0A0A0A;
-            color:#0A0A0A; font-family:'Space Mono',monospace;
+            background:#C1121F; border:2.5px solid #FEF0D5;
+            box-shadow:2px 2px 0 #FEF0D5;
+            color:#FEF0D5; font-family:'Space Mono',monospace;
             font-size:0.7rem; font-weight:700; letter-spacing:0.04em;
             padding:2px 9px; text-transform:uppercase;
         ">Instacart &nbsp;//&nbsp; 206,209 customers &nbsp;//&nbsp; 3.4M orders</div>

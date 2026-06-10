@@ -112,24 +112,24 @@ def render_happy_path(full_data):
 
                         chart = (
                             alt.Chart(funnel_df)
-                            .mark_bar(color='#FFD93D', cornerRadius=0, stroke='#0A0A0A', strokeWidth=2)
+                            .mark_bar(color='#F4C430', cornerRadius=0, stroke='#00141F', strokeWidth=2)
                             .encode(
                                 x=alt.X('Stage:N', sort=None,
                                          axis=alt.Axis(
-                                             labelColor='#F5F2E6',
-                                             gridColor='rgba(245,242,230,0.12)',
-                                             domainColor='#F5F2E6',
+                                             labelColor='#FEF0D5',
+                                             gridColor='rgba(254,240,213,0.12)',
+                                             domainColor='#FEF0D5',
                                          )),
                                 y=alt.Y('Users:Q',
                                          axis=alt.Axis(
-                                             labelColor='#F5F2E6',
-                                             gridColor='rgba(245,242,230,0.12)',
-                                             domainColor='#F5F2E6',
+                                             labelColor='#FEF0D5',
+                                             gridColor='rgba(254,240,213,0.12)',
+                                             domainColor='#FEF0D5',
                                          )),
                                 tooltip=['Stage', 'Users', 'Drop']
                             )
                             .properties(height=200)
-                            .configure_view(strokeWidth=0, fill='#1F1F23')
+                            .configure_view(strokeWidth=0, fill='#0A3D5C')
                         )
                         st.altair_chart(
                             chart, use_container_width=True
