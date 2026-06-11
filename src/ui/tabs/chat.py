@@ -8,6 +8,7 @@ import streamlit as st
 from src.config import API_KEYS, MODEL_ARSENAL
 from src.ui.renderer import render_message
 from src.agent.caller import call_agent
+from src.agent.proactive import get_briefing
 from src.utils.persistence import save_session, clear_session
 
 
@@ -51,6 +52,8 @@ def render_chat(features, orders):
             )
 
     st.divider()
+
+    render_briefing()
 
     # New conversation — clears the saved session and resets the chat.
     _, nc_col = st.columns([3, 1])
@@ -173,6 +176,39 @@ def render_chat(features, orders):
 - *"Why does dept diversity predict loyalty?"*
 - *"How is the loyalty score calculated?"*
 """)
+
+
+def render_briefing():
+    """Proactive Briefing panel: deterministic signal cards + grounded narration.
+
+    Appears only once analysis has run. Best-effort — any failure silently
+    skips the panel rather than crashing the chat tab.
+    """
+    try:
+        briefing = get_briefing()
+    except Exception:
+        return
+
+    if not briefing["ready"] or not briefing["signals"]:
+        return
+
+    with st.expander("💡 Today's Briefing", expanded=True):
+        if briefing["narrative"]:
+            st.markdown(briefing["narrative"])
+            st.divider()
+
+        signals = briefing["signals"]
+        cols = st.columns(len(signals))
+        for col, sig in zip(cols, signals):
+            with col:
+                st.markdown(f"#### {sig['icon']} {sig['headline']}")
+                st.caption(sig["detail"])
+                if st.button(
+                    sig["action_label"],
+                    key=f"briefing_{sig['id']}",
+                    use_container_width=True,
+                ):
+                    _handle_quick_action(sig["action_prompt"])
 
 
 def _handle_quick_action(prompt: str):
