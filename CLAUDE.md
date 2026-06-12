@@ -10,6 +10,34 @@ This file has two jobs:
 
 ## 📓 Project Journal
 
+### 2026-06-12 — Proactive Analyst, Phase 1: Proactive Briefing
+Turned the chat agent from reactive to proactive. The moment analysis has run,
+the AI Chat tab now opens with a "💡 Today's Briefing" panel: a grounded
+narrative plus up to 4 signal cards, each with a one-click action button that
+hands a tailored prompt to the existing agent.
+- **`src/agent/insights.py`** (NEW, pure/Streamlit-free): `detect_signals(...)`
+  reuses the analysis layer (`calculate_churn_risk`, `compute_segment_gaps`,
+  `compute_intervention_gaps`+`INTERVENTION_TEMPLATES`, `get_happy_paths`) to
+  build churn / segment_gap / intervention / power_value / happy_path signals,
+  each `{id,severity,icon,headline,detail,action_label,action_prompt}`, sorted
+  by severity, capped at 4. `briefing_digest(signals)` flattens them to plain
+  text. Every number is deterministic — the LLM only narrates.
+- **`src/config.py`**: added `PROACTIVE_SYSTEM` — narrate ONLY the digest's
+  numbers, 2-3 sentences, end with the most urgent recommendation.
+- **`src/agent/proactive.py`** (NEW): `get_briefing()` reads `scored_df`/
+  `power`/`regular`/`power_user_ids`/`full_data`/`features` from session_state,
+  detects signals, narrates via the existing `generate()`, caches the narrative
+  keyed by `(top_pct, churn_days, len(scored_df))`, and falls back to a
+  deterministic templated briefing on any LLM failure. `generate_fn`/`state`
+  are injectable for testing.
+- **`src/ui/tabs/chat.py`**: `render_briefing()` in a "Today's Briefing"
+  expander above the conversation; cards reuse the existing
+  `_handle_quick_action(action_prompt)` route (no new execution path).
+- Tests: `tests/test_insights.py` (16 checks), `tests/test_proactive.py`
+  (12 checks, no network). All existing no-network tests still pass; app boots
+  headless HTTP 200. (Browser visual of the cards still wants a human glance.)
+- Provider stays Gemini-only; provider abstraction is deferred to Phase 5.
+
 ### 2026-06-11 — Recolor: navy + cream + red palette
 Reskinned the whole app onto a 4-color palette while keeping the neo-brutalist
 structure and chart readability:
