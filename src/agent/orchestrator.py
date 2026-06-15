@@ -1,14 +1,19 @@
 """
 Autopilot Orchestrator
 
-Three phases for goal-driven runs:
+Primary (reflexive) path for goal-driven runs:
+  run_reflexive(goal)  -> closed loop: run a step, read its real numbers, decide
+                          the next move (or stop). Reasoning surfaced per step.
+  decide_next_step(..) -> one grounded Gemini call → a single JSON decision.
+  synthesize_goal(...) -> Gemini writes the closing executive summary.
+
+Legacy (open-loop) path, retained as the deterministic fallback + still tested:
   plan_goal(goal)      -> Gemini picks an ordered list of tool steps (JSON).
   execute_plan(steps)  -> calls the tool functions directly, in order.
-  synthesize_goal(...) -> Gemini writes the closing executive summary.
 
 TOOL_REGISTRY is the single source of truth for which tools exist, their
 descriptions (for the planning prompt), and their allowed argument names
-(for validation). It is reused by both the catalog and the executor.
+(for validation). It is reused by the catalog, the executor, and the loop.
 """
 
 import json
@@ -16,6 +21,7 @@ import re
 
 from src.agent.caller import generate
 from src.agent import tools as T
+from src.config import REFLEXIVE_SYSTEM
 
 
 TOOL_REGISTRY = {
@@ -202,3 +208,177 @@ def synthesize_goal(goal: str, results, generate_fn=generate) -> str:
     )
     result = generate_fn(prompt, system_instruction=_SYNTH_SYSTEM)
     return result.get("text", "")
+
+
+# ── Reflexive (closed-loop) controller ──────────────────────────────────────
+
+_DIGEST_SKIP_KEYS = {"instruction", "status"}
+
+
+def _digest_history(history):
+    """Flatten executed steps into grounded text for the controller.
+
+    Pure: echoes only the scalar fields already present in each tool's result
+    dict (skipping prompt-control keys and any nested/non-scalar values). No
+    computation, no LLM — this is the ONLY place the controller may read numbers.
+    """
+    if not history:
+        return "(no steps run yet)"
+    lines = []
+    for i, step in enumerate(history, 1):
+        result = step.get("result")
+        if not isinstance(result, dict):
+            result = {}
+        parts = []
+        for k, v in result.items():
+            if k in _DIGEST_SKIP_KEYS or not isinstance(v, (str, int, float, bool)):
+                continue
+            parts.append(f"{k}={v}")
+        detail = ", ".join(parts) if parts else "(no scalar output)"
+        label = step.get("label") or step.get("tool")
+        lines.append(f"Step {i} — {label}: {detail}")
+    return "\n".join(lines)
+
+
+def _parse_decision(text):
+    """Parse the controller's single JSON object, or None if unusable."""
+    if not text:
+        return None
+    cleaned = text.strip()
+    cleaned = re.sub(r"^```(?:json)?", "", cleaned).strip()
+    cleaned = re.sub(r"```$", "", cleaned).strip()
+    try:
+        data = json.loads(cleaned)
+        if isinstance(data, dict):
+            return data
+    except (ValueError, TypeError):
+        pass
+    m = re.search(r"\{.*\}", text, re.DOTALL)
+    if m:
+        try:
+            data = json.loads(m.group(0))
+            if isinstance(data, dict):
+                return data
+        except (ValueError, TypeError):
+            pass
+    return None
+
+
+def decide_next_step(goal, history, generate_fn=generate):
+    """One controller call: choose the next tool (grounded) or signal done.
+
+    Returns {"done": True, "reason": ...}, or
+    {"tool", "args", "label", "reason"}, or None if the output was unusable
+    (unparseable, unknown tool).
+    """
+    prompt = (
+        f"Goal: {goal}\n\n"
+        f"Available tools:\n{_tool_catalog()}\n\n"
+        f"Results so far:\n{_digest_history(history)}\n\n"
+        "Decide the next step now."
+    )
+    raw = generate_fn(prompt, system_instruction=REFLEXIVE_SYSTEM)
+    data = _parse_decision(raw.get("text", ""))
+    if data is None:
+        return None
+    if data.get("done") is True:
+        return {"done": True, "reason": data.get("reason", "")}
+    name = data.get("tool")
+    if name not in TOOL_REGISTRY:
+        return None
+    raw_args = data.get("args") or {}
+    if not isinstance(raw_args, dict):
+        raw_args = {}
+    allowed = TOOL_REGISTRY[name]["args"].keys()
+    args = {k: v for k, v in raw_args.items() if k in allowed}
+    return {
+        "tool": name,
+        "args": args,
+        "label": data.get("label", name),
+        "reason": data.get("reason", ""),
+    }
+
+
+MAX_STEPS = 6
+
+_SCORING_STEP = {
+    "tool": "run_scoring_analysis",
+    "args": {},
+    "label": "Score all customers",
+    "reason": "Scoring underpins every other analysis, so run it first.",
+}
+
+
+def _execute_one(step):
+    """Run a single validated step's tool; never raise (record errors)."""
+    meta = TOOL_REGISTRY.get(step["tool"])
+    if meta is None:
+        return {"error": "unknown tool"}
+    try:
+        return meta["func"](**step["args"])
+    except Exception as e:  # best-effort: record and continue
+        return {"error": f"step failed: {e}"}
+
+
+def _run_step(step, history, executed, status_callback):
+    """Execute one step, report it, and record it in history/executed."""
+    if status_callback:
+        status_callback(step.get("reason", ""), step["label"])
+    result = _execute_one(step)
+    executed.add(step["tool"])
+    history.append({**step, "result": result})
+
+
+def _run_fallback_remainder(history, executed, status_callback):
+    """Fallback: run the unrun steps of DEFAULT_PLAN in order, respecting the cap."""
+    for s in DEFAULT_PLAN:
+        if len(history) >= MAX_STEPS:
+            break
+        if s["tool"] in executed:
+            continue
+        step = {
+            "tool": s["tool"], "args": dict(s["args"]), "label": s["label"],
+            "reason": "Falling back to the standard plan.",
+        }
+        _run_step(step, history, executed, status_callback)
+
+
+def run_reflexive(goal, status_callback=None, generate_fn=generate):
+    """Closed-loop driver. Runs one step at a time, deciding the next from the
+    real results so far, with deterministic guardrails. Returns the list of
+    executed step dicts: [{label, tool, args, reason, result}, ...].
+
+    `status_callback(reason, label)` (optional) is called just before each step
+    executes, so the UI can show the agent thinking then acting.
+    """
+    history = []
+    executed = set()       # tool names that have run
+    seen = set()           # (tool, frozenset(args)) — blocks exact repeats
+    fails = 0              # consecutive unusable decisions
+
+    while len(history) < MAX_STEPS:
+        # Scoring-first: force scoring before anything else.
+        if "run_scoring_analysis" not in executed:
+            step = dict(_SCORING_STEP)
+        else:
+            decision = decide_next_step(goal, history, generate_fn=generate_fn)
+            if decision is None:
+                fails += 1
+                if fails >= 2:
+                    _run_fallback_remainder(history, executed, status_callback)
+                    break
+                continue
+            fails = 0
+            if decision.get("done"):
+                break
+            step = decision
+
+        # args values are scalars (decide_next_step filters to the registry's
+        # int/float/str args), so they are always hashable here.
+        key = (step["tool"], frozenset(step["args"].items()))
+        if key in seen:           # no forward progress -> stop
+            break
+        seen.add(key)
+        _run_step(step, history, executed, status_callback)
+
+    return history
