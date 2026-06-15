@@ -9,7 +9,7 @@ produced (this run or in chat) are listed with download buttons.
 import streamlit as st
 
 from src.ui.renderer import render_message, download_key
-from src.agent.orchestrator import plan_goal, execute_plan, synthesize_goal
+from src.agent.orchestrator import run_reflexive, synthesize_goal
 
 
 _EXAMPLES = [
@@ -22,8 +22,9 @@ _EXAMPLES = [
 def render_autopilot(features, orders):
     st.header("🤖 Autopilot")
     st.caption(
-        "Give the agent a goal. It plans the steps, runs them, and hands you "
-        "downloadable deliverables — no tool-by-tool prompting needed."
+        "Give the agent a goal. It runs one analysis step, reads the numbers, "
+        "and decides the next move live — adapting as it learns — then hands you "
+        "downloadable deliverables."
     )
 
     cols = st.columns(len(_EXAMPLES))
@@ -49,17 +50,15 @@ def render_autopilot(features, orders):
 def _run_goal(goal: str):
     start = len(st.session_state.ui_history)
 
-    # Phase 1 — plan (visible)
-    steps = plan_goal(goal)
-    plan_md = "### 🧭 Plan\n" + "\n".join(
-        f"{i}. {s['label']}" for i, s in enumerate(steps, 1)
-    )
-    st.markdown(plan_md)
+    # Closed loop — show the agent think (reason) then act (label) per step.
+    with st.status("Thinking…", expanded=True) as status:
+        def _on_step(reason, label):
+            if reason:
+                st.markdown(f"🧠 _{reason}_")
+            st.write(f"▶️ **{label}**")
 
-    # Phase 2 — execute (live status log, reusing the staged-loading pattern)
-    with st.status("Running plan…", expanded=True) as status:
-        results = execute_plan(steps, status_callback=lambda lbl: st.write(f"▸ {lbl}"))
-        status.update(label="Plan complete", state="complete", expanded=False)
+        history = run_reflexive(goal, status_callback=_on_step)
+        status.update(label="Goal complete", state="complete", expanded=False)
 
     # Inline analysis output produced by the tools (charts/tables/text only;
     # artifacts are shown in the deliverables panel below).
@@ -67,8 +66,8 @@ def _run_goal(goal: str):
         if msg.get("type") != "artifact":
             render_message(msg)
 
-    # Phase 3 — synthesize
-    summary = synthesize_goal(goal, results)
+    # Executive summary over what actually ran.
+    summary = synthesize_goal(goal, history)
     if summary:
         st.markdown("### 📋 Executive summary")
         st.markdown(summary)
