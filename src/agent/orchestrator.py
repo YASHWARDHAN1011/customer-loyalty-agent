@@ -16,6 +16,7 @@ import re
 
 from src.agent.caller import generate
 from src.agent import tools as T
+from src.config import REFLEXIVE_SYSTEM
 
 
 TOOL_REGISTRY = {
@@ -202,3 +203,90 @@ def synthesize_goal(goal: str, results, generate_fn=generate) -> str:
     )
     result = generate_fn(prompt, system_instruction=_SYNTH_SYSTEM)
     return result.get("text", "")
+
+
+# ── Reflexive (closed-loop) controller ──────────────────────────────────────
+
+_DIGEST_SKIP_KEYS = {"instruction", "status"}
+
+
+def _digest_history(history):
+    """Flatten executed steps into grounded text for the controller.
+
+    Pure: echoes only the scalar fields already present in each tool's result
+    dict (skipping prompt-control keys and any nested/non-scalar values). No
+    computation, no LLM — this is the ONLY place the controller may read numbers.
+    """
+    if not history:
+        return "(no steps run yet)"
+    lines = []
+    for i, step in enumerate(history, 1):
+        result = step.get("result") or {}
+        parts = []
+        for k, v in result.items():
+            if k in _DIGEST_SKIP_KEYS or not isinstance(v, (str, int, float, bool)):
+                continue
+            parts.append(f"{k}={v}")
+        detail = ", ".join(parts) if parts else "(no scalar output)"
+        label = step.get("label") or step.get("tool")
+        lines.append(f"Step {i} — {label}: {detail}")
+    return "\n".join(lines)
+
+
+def _parse_decision(text):
+    """Parse the controller's single JSON object, or None if unusable."""
+    if not text:
+        return None
+    cleaned = text.strip()
+    cleaned = re.sub(r"^```(?:json)?", "", cleaned).strip()
+    cleaned = re.sub(r"```$", "", cleaned).strip()
+    try:
+        data = json.loads(cleaned)
+        if isinstance(data, dict):
+            return data
+    except (ValueError, TypeError):
+        pass
+    m = re.search(r"\{.*\}", text, re.DOTALL)
+    if m:
+        try:
+            data = json.loads(m.group(0))
+            if isinstance(data, dict):
+                return data
+        except (ValueError, TypeError):
+            pass
+    return None
+
+
+def decide_next_step(goal, history, generate_fn=generate):
+    """One controller call: choose the next tool (grounded) or signal done.
+
+    Returns {"done": True, "reason": ...}, or
+    {"tool", "args", "label", "reason"}, or None if the output was unusable
+    (unparseable, unknown tool).
+    """
+    prompt = (
+        f"Goal: {goal}\n\n"
+        f"Available tools:\n{_tool_catalog()}\n\n"
+        f"Results so far:\n{_digest_history(history)}\n\n"
+        "Decide the next step now."
+    )
+    raw = generate_fn(prompt, system_instruction=REFLEXIVE_SYSTEM)
+    data = _parse_decision(raw.get("text", ""))
+    if data is None:
+        return None
+    if data.get("done") is True:
+        return {"done": True, "reason": data.get("reason", "")}
+    name = data.get("tool")
+    if name not in TOOL_REGISTRY:
+        return None
+    raw_args = data.get("args") or {}
+    if not isinstance(raw_args, dict):
+        raw_args = {}
+    allowed = TOOL_REGISTRY[name]["args"].keys()
+    args = {k: v for k, v in raw_args.items() if k in allowed}
+    return {
+        "tool": name,
+        "args": args,
+        "label": data.get("label", name),
+        "reason": data.get("reason", ""),
+    }
