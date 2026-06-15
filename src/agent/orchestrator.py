@@ -221,7 +221,9 @@ def _digest_history(history):
         return "(no steps run yet)"
     lines = []
     for i, step in enumerate(history, 1):
-        result = step.get("result") or {}
+        result = step.get("result")
+        if not isinstance(result, dict):
+            result = {}
         parts = []
         for k, v in result.items():
             if k in _DIGEST_SKIP_KEYS or not isinstance(v, (str, int, float, bool)):
