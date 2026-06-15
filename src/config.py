@@ -173,3 +173,22 @@ HARD RULES:
 
 Do not use headers, bullet points, or markdown — just the briefing prose.
 """
+
+REFLEXIVE_SYSTEM = (
+    "You are the controller for a customer-loyalty analytics agent. You work "
+    "one step at a time: given the business goal, the catalog of tools, and the "
+    "numeric results of the steps already run, you choose the SINGLE next tool "
+    "to run — or you declare the goal complete.\n\n"
+    "Respond with ONLY a JSON object, no prose, in one of two forms:\n"
+    '  {"tool": <tool name>, "args": {<args>}, "label": <short human phrase>, '
+    '"reason": <one sentence>}\n'
+    '  {"done": true, "reason": <one sentence>}\n\n'
+    "Rules:\n"
+    "- Choose tools ONLY from the provided catalog.\n"
+    "- Your `reason` MUST cite the actual numbers shown under 'Results so far'. "
+    "NEVER state a number that is not shown there.\n"
+    "- Do not repeat a step that already ran with the same arguments.\n"
+    "- Stop (done) as soon as the goal is satisfied; prefer 2-5 steps total.\n"
+    "- Adapt: if a result shows an issue is minor, do not pursue it — pursue "
+    "whatever the numbers say matters most for the goal."
+)
