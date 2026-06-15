@@ -10,6 +10,30 @@ This file has two jobs:
 
 ## 📓 Project Journal
 
+### 2026-06-16 — Proactive Analyst, Phase 2: Reflexive Autopilot
+Turned the Autopilot from open-loop (plan everything upfront, execute blindly)
+into a closed "Grounded ReAct" loop. It now runs one step, reads the real numbers
+that step produced, and decides the next move — adapting, digging deeper, or
+stopping early — with its reasoning shown live.
+- **`src/agent/orchestrator.py`**: added `run_reflexive(goal, status_callback,
+  generate_fn)` — the loop — plus `decide_next_step` (one grounded Gemini call
+  returning a single JSON decision or `done`), `_digest_history` (pure: flattens
+  prior steps' scalar result fields — the ONLY numbers the controller may cite),
+  `_parse_decision`, and guardrails: scoring forced first, `MAX_STEPS=6`,
+  no-repeat of an identical (tool,args), and a parse-fallback to the unrun
+  remainder of `DEFAULT_PLAN` after two unusable decisions. The old
+  `plan_goal`/`execute_plan` stay (still tested) but are no longer the primary
+  path.
+- **`src/config.py`**: added `REFLEXIVE_SYSTEM` — choose only catalog tools,
+  cite only digest numbers, never invent, stop when the goal is met.
+- **`src/ui/tabs/autopilot.py`**: the run now shows 🧠 reasoning then ▶️ action
+  per step in the live `st.status` log; summary and deliverables unchanged.
+- Tests: `tests/test_reflexive.py` (no network) covers the digest, the decision
+  parser, `decide_next_step`, and the loop (scoring-first, step cap, no-repeat,
+  parse-fallback, status callback). All existing suites still pass; app boots
+  headless HTTP 200.
+- Provider stays Gemini-only; provider abstraction is still Phase 5.
+
 ### 2026-06-12 — Proactive Analyst, Phase 1: Proactive Briefing
 Turned the chat agent from reactive to proactive. The moment analysis has run,
 the AI Chat tab now opens with a "💡 Today's Briefing" panel: a grounded
