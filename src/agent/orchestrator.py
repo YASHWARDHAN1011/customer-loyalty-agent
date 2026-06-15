@@ -292,3 +292,94 @@ def decide_next_step(goal, history, generate_fn=generate):
         "label": data.get("label", name),
         "reason": data.get("reason", ""),
     }
+
+
+MAX_STEPS = 6
+
+# Tools that require run_scoring_analysis to have run first.
+SCORING_DEPENDENT = {
+    "run_segmentation", "run_happy_path", "run_interventions",
+    "draft_campaign_emails", "build_action_plan",
+}
+
+_SCORING_STEP = {
+    "tool": "run_scoring_analysis",
+    "args": {},
+    "label": "Score all customers",
+    "reason": "Scoring underpins every other analysis, so run it first.",
+}
+
+
+def _execute_one(step):
+    """Run a single validated step's tool; never raise (record errors)."""
+    meta = TOOL_REGISTRY.get(step["tool"])
+    if meta is None:
+        return {"error": "unknown tool"}
+    try:
+        return meta["func"](**step["args"])
+    except Exception as e:  # best-effort: record and continue
+        return {"error": f"step failed: {e}"}
+
+
+def _run_step(step, history, executed, status_callback):
+    """Execute one step, report it, and record it in history/executed."""
+    if status_callback:
+        status_callback(step.get("reason", ""), step["label"])
+    result = _execute_one(step)
+    executed.add(step["tool"])
+    history.append({**step, "result": result})
+
+
+def _run_fallback_remainder(history, executed, status_callback):
+    """A flaky controller: run the unrun steps of DEFAULT_PLAN and finish."""
+    for s in DEFAULT_PLAN:
+        if s["tool"] in executed:
+            continue
+        step = {
+            "tool": s["tool"], "args": dict(s["args"]), "label": s["label"],
+            "reason": "Falling back to the standard plan.",
+        }
+        _run_step(step, history, executed, status_callback)
+
+
+def run_reflexive(goal, status_callback=None, generate_fn=generate):
+    """Closed-loop driver. Runs one step at a time, deciding the next from the
+    real results so far, with deterministic guardrails. Returns the list of
+    executed step dicts: [{label, tool, args, reason, result}, ...].
+
+    `status_callback(reason, label)` (optional) is called just before each step
+    executes, so the UI can show the agent thinking then acting.
+    """
+    history = []
+    executed = set()       # tool names that have run
+    seen = set()           # (tool, frozenset(args)) — blocks exact repeats
+    fails = 0              # consecutive unusable decisions
+
+    while len(history) < MAX_STEPS:
+        # Scoring-first: force scoring before anything else.
+        if "run_scoring_analysis" not in executed:
+            step = dict(_SCORING_STEP)
+        else:
+            decision = decide_next_step(goal, history, generate_fn=generate_fn)
+            if decision is None:
+                fails += 1
+                if fails >= 2:
+                    _run_fallback_remainder(history, executed, status_callback)
+                    break
+                continue
+            fails = 0
+            if decision.get("done"):
+                break
+            # Defensive scoring-first guard (scoring has already run here).
+            if (decision["tool"] in SCORING_DEPENDENT
+                    and "run_scoring_analysis" not in executed):
+                decision = dict(_SCORING_STEP)
+            step = decision
+
+        key = (step["tool"], frozenset(step["args"].items()))
+        if key in seen:           # no forward progress -> stop
+            break
+        seen.add(key)
+        _run_step(step, history, executed, status_callback)
+
+    return history
