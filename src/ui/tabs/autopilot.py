@@ -1,9 +1,10 @@
 """
 Autopilot Page
 
-Renders Tab 7. The user states a goal; the orchestrator plans it, runs the
-steps with a live status log, then synthesizes a summary. All deliverables
-produced (this run or in chat) are listed with download buttons.
+Renders Tab 7. The user states a goal; the reflexive controller runs one step,
+reads the numbers, and decides the next move — showing its reasoning live — then
+synthesizes a summary. All deliverables produced (this run or in chat) are listed
+with download buttons.
 """
 
 import streamlit as st
@@ -55,7 +56,8 @@ def _run_goal(goal: str):
         def _on_step(reason, label):
             if reason:
                 st.markdown(f"🧠 _{reason}_")
-            st.write(f"▶️ **{label}**")
+            if label:
+                st.write(f"▶️ **{label}**")
 
         history = run_reflexive(goal, status_callback=_on_step)
         status.update(label="Goal complete", state="complete", expanded=False)
