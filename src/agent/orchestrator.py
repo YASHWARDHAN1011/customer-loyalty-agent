@@ -296,12 +296,6 @@ def decide_next_step(goal, history, generate_fn=generate):
 
 MAX_STEPS = 6
 
-# Tools that require run_scoring_analysis to have run first.
-SCORING_DEPENDENT = {
-    "run_segmentation", "run_happy_path", "run_interventions",
-    "draft_campaign_emails", "build_action_plan",
-}
-
 _SCORING_STEP = {
     "tool": "run_scoring_analysis",
     "args": {},
@@ -331,8 +325,10 @@ def _run_step(step, history, executed, status_callback):
 
 
 def _run_fallback_remainder(history, executed, status_callback):
-    """A flaky controller: run the unrun steps of DEFAULT_PLAN and finish."""
+    """Fallback: run the unrun steps of DEFAULT_PLAN in order, respecting the cap."""
     for s in DEFAULT_PLAN:
+        if len(history) >= MAX_STEPS:
+            break
         if s["tool"] in executed:
             continue
         step = {
@@ -370,12 +366,10 @@ def run_reflexive(goal, status_callback=None, generate_fn=generate):
             fails = 0
             if decision.get("done"):
                 break
-            # Defensive scoring-first guard (scoring has already run here).
-            if (decision["tool"] in SCORING_DEPENDENT
-                    and "run_scoring_analysis" not in executed):
-                decision = dict(_SCORING_STEP)
             step = decision
 
+        # args values are scalars (decide_next_step filters to the registry's
+        # int/float/str args), so they are always hashable here.
         key = (step["tool"], frozenset(step["args"].items()))
         if key in seen:           # no forward progress -> stop
             break
