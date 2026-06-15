@@ -38,7 +38,7 @@ decide_next_step(goal, history, generate_fn=generate)
     -> {"tool", "args", "label", "reason"} | {"done": True, "reason"}
 _digest_history(history) -> str          # pure, no LLM
 run_reflexive(goal, status_callback=None, generate_fn=generate)
-    -> {"steps": [...], "history": [...]} # drives the loop
+    -> [{label, tool, args, reason, result}, ...]  # the executed step list
 synthesize_goal(goal, results, generate_fn=generate) -> str  # kept ~as-is
 ```
 

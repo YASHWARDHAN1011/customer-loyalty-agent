@@ -1,14 +1,19 @@
 """
 Autopilot Orchestrator
 
-Three phases for goal-driven runs:
+Primary (reflexive) path for goal-driven runs:
+  run_reflexive(goal)  -> closed loop: run a step, read its real numbers, decide
+                          the next move (or stop). Reasoning surfaced per step.
+  decide_next_step(..) -> one grounded Gemini call → a single JSON decision.
+  synthesize_goal(...) -> Gemini writes the closing executive summary.
+
+Legacy (open-loop) path, retained as the deterministic fallback + still tested:
   plan_goal(goal)      -> Gemini picks an ordered list of tool steps (JSON).
   execute_plan(steps)  -> calls the tool functions directly, in order.
-  synthesize_goal(...) -> Gemini writes the closing executive summary.
 
 TOOL_REGISTRY is the single source of truth for which tools exist, their
 descriptions (for the planning prompt), and their allowed argument names
-(for validation). It is reused by both the catalog and the executor.
+(for validation). It is reused by the catalog, the executor, and the loop.
 """
 
 import json
