@@ -10,6 +10,30 @@ This file has two jobs:
 
 ## 📓 Project Journal
 
+### 2026-06-18 — Proactive Analyst, Phase 3: Memory / Continuity
+Gave the briefing a durable, cross-session memory so it stops being amnesiac.
+- **`src/agent/memory.py`** (NEW, Streamlit-free, best-effort like
+  `persistence.py`): a JSON store at `.app_state/agent_memory.json` holding the
+  last briefing `snapshot` (signal id/severity/headline + params + when) and an
+  `action_log`. Pure logic: `diff_signals` (new / still_present / resolved, each
+  with an `acted_on` flag via `ACTION_SIGNAL_MAP`) and `continuity_line`
+  ("Since last session: churn risk is still present (you've already acted on
+  it)…"). I/O: `load_memory`, `record_snapshot` (overwrite-guarded by params),
+  `record_action`, `clear_memory`.
+- **`src/config.py`**: added `MEMORY_SYSTEM` — narrate continuity ONLY from the
+  given note, never invent prior sessions.
+- **`src/agent/proactive.py`**: `get_briefing` now loads memory, diffs, prepends
+  the deterministic continuity line to the digest, narrates under
+  `MEMORY_SYSTEM`, and records the new snapshot — all on the cache-miss path, so
+  reruns neither re-call the model nor re-record. New `load_memory_fn`/
+  `record_snapshot_fn` seams keep tests off disk.
+- **`src/agent/tools.py`**: the three deliverable tools log their action.
+- **`src/ui/sidebar.py`**: "🧠 Forget what you remember" button clears memory.
+- Tests: `tests/test_memory.py` (pure logic + disk round-trip), updated
+  `tests/test_proactive.py` (continuity + snapshot). No network. App boots
+  headless HTTP 200.
+- Provider stays Gemini-only; provider abstraction is still Phase 5.
+
 ### 2026-06-16 — Proactive Analyst, Phase 2: Reflexive Autopilot
 Turned the Autopilot from open-loop (plan everything upfront, execute blindly)
 into a closed "Grounded ReAct" loop. It now runs one step, reads the real numbers
