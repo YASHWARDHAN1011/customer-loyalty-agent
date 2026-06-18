@@ -2,8 +2,9 @@
 Proactive Briefing — session-state glue + grounded narration.
 
 Bridges the pure signal detector (insights.py) to the running app. Reads the
-analysis results out of st.session_state, detects the top signals, and asks the
-existing LLM caller to narrate them under PROACTIVE_SYSTEM. The narrative is
+analysis results out of st.session_state, detects the top signals, diffs them
+against cross-session memory, and asks the existing LLM caller to narrate them
+(with a deterministic continuity line) under MEMORY_SYSTEM. The narrative is
 cached so Streamlit reruns don't re-call the model, and any LLM failure falls
 back to a deterministic templated briefing so the panel never blanks out.
 """
