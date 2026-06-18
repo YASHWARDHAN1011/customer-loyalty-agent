@@ -11,6 +11,7 @@ from src.config import API_KEYS, MODEL_ARSENAL
 from src.export.generator import generate_csv_export
 from src.export.generator import generate_summary_report
 from src.ui.onboarding import start_tour
+from src.agent.memory import clear_memory
 
 
 def render_sidebar(features, orders, run_btn_callback):
@@ -165,5 +166,11 @@ def render_sidebar(features, orders, run_btn_callback):
                     if k not in keep:
                         del st.session_state[k]
                 st.rerun()
+
+        if st.button("🧠 Forget what you remember", use_container_width=True):
+            clear_memory()
+            st.session_state.pop('_briefing_cache', None)
+            st.toast("Cleared the agent's cross-session memory.")
+            st.rerun()
 
     return run_btn

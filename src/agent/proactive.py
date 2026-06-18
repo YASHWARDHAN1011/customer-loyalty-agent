@@ -2,26 +2,30 @@
 Proactive Briefing — session-state glue + grounded narration.
 
 Bridges the pure signal detector (insights.py) to the running app. Reads the
-analysis results out of st.session_state, detects the top signals, and asks the
-existing LLM caller to narrate them under PROACTIVE_SYSTEM. The narrative is
+analysis results out of st.session_state, detects the top signals, diffs them
+against cross-session memory, and asks the existing LLM caller to narrate them
+(with a deterministic continuity line) under MEMORY_SYSTEM. The narrative is
 cached so Streamlit reruns don't re-call the model, and any LLM failure falls
 back to a deterministic templated briefing so the panel never blanks out.
 """
 
 import streamlit as st
 
-from src.config import PROACTIVE_SYSTEM
+from src.config import MEMORY_SYSTEM
 from src.agent.caller import generate
 from src.agent.insights import detect_signals, briefing_digest
+from src.agent.memory import (
+    load_memory, record_snapshot, diff_signals, continuity_line,
+)
 
 CHURN_DAYS = 30
 
 
-def _fallback_narrative(signals):
+def _fallback_narrative(signals, continuity=""):
     """Deterministic briefing used when the LLM is unavailable.
 
-    Pure — references only the already-computed signal headlines/details, so it
-    stays grounded just like the model path is required to.
+    Pure — references only already-computed signal headlines/details (+ the
+    deterministic continuity line), so it stays grounded like the model path.
     """
     if not signals:
         return "Analysis is ready, but nothing stands out as urgent right now."
@@ -31,28 +35,31 @@ def _fallback_narrative(signals):
         others = "; ".join(s["headline"] for s in signals[1:])
         lead += f" Also worth your attention: {others}."
     lead += f" Start here: {top['action_label'].lower()}."
-    return lead
+    return f"{continuity} {lead}".strip() if continuity else lead
 
 
-def _narrate(signals, generate_fn):
-    """Narrate the signal digest via the LLM, falling back on any failure."""
+def _narrate(signals, generate_fn, continuity=""):
+    """Narrate the signal digest (with continuity) via the LLM; fall back safely."""
     digest = briefing_digest(signals)
+    prompt = f"{continuity}\n\n{digest}" if continuity else digest
     try:
-        result = generate_fn(digest, system_instruction=PROACTIVE_SYSTEM)
+        result = generate_fn(prompt, system_instruction=MEMORY_SYSTEM)
         text = (result.get("text") or "").strip()
         if not text:
             raise ValueError("empty narration")
         return text
     except Exception:
-        return _fallback_narrative(signals)
+        return _fallback_narrative(signals, continuity)
 
 
-def get_briefing(*, generate_fn=generate, state=None):
-    """Build the proactive briefing from the current session.
+def get_briefing(*, generate_fn=generate, state=None,
+                 load_memory_fn=load_memory, record_snapshot_fn=record_snapshot):
+    """Build the proactive, continuity-aware briefing from the current session.
 
     Returns {"ready": bool, "signals": list[dict], "narrative": str}.
-    `state` and `generate_fn` are injectable for testing; in the app they
-    default to st.session_state and the real Gemini caller.
+    `state`, `generate_fn`, `load_memory_fn`, and `record_snapshot_fn` are
+    injectable for testing; in the app they default to st.session_state, the real
+    Gemini caller, and the real memory store.
     """
     state = st.session_state if state is None else state
 
@@ -86,7 +93,11 @@ def get_briefing(*, generate_fn=generate, state=None):
     if cached and cached.get("key") == cache_key:
         narrative = cached["narrative"]
     else:
-        narrative = _narrate(signals, generate_fn)
+        memory = load_memory_fn()
+        params = {"top_pct": top_pct, "churn_days": CHURN_DAYS, "n": len(scored_df)}
+        continuity = continuity_line(diff_signals(signals, memory))
+        narrative = _narrate(signals, generate_fn, continuity)
+        record_snapshot_fn(signals, params)
         state["_briefing_cache"] = {"key": cache_key, "narrative": narrative}
 
     return {"ready": True, "signals": signals, "narrative": narrative}

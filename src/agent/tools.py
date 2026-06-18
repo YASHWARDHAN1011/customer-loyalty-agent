@@ -35,6 +35,7 @@ from src.agent.deliverables import (
     select_target_users, to_csv_bytes,
     campaign_emails_markdown, action_plan_markdown,
 )
+from src.agent import memory
 
 
 def run_scoring_analysis(top_percentile: int = 10) -> dict:
@@ -640,6 +641,7 @@ def export_target_list(
         "target_list.csv", "text/csv", to_csv_bytes(target),
         f"🎯 Target list — {len(target):,} users",
     )
+    memory.record_action("export_target_list")
     return {
         "status": "success",
         "target_count": int(len(target)),
@@ -674,6 +676,7 @@ def draft_campaign_emails(segment: str = None) -> dict:
     md = campaign_emails_markdown(gaps, INTERVENTION_TEMPLATES)
     _add_artifact("campaign_emails.md", "text/markdown", md,
                   "✉️ Campaign email drafts")
+    memory.record_action("draft_campaign_emails")
     return {
         "status": "success",
         "filename": "campaign_emails.md",
@@ -715,6 +718,7 @@ def build_action_plan(churn_days: int = 30) -> dict:
     )
     _add_artifact("action_plan.md", "text/markdown", md,
                   "✅ Retention action plan")
+    memory.record_action("build_action_plan")
     return {
         "status": "success",
         "filename": "action_plan.md",
