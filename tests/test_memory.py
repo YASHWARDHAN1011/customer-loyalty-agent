@@ -116,6 +116,13 @@ def main():
         f.write("{ not json")
     check("corrupt -> default", mem.load_memory(path=tmp) == {"last_snapshot": None, "action_log": []})
 
+    # --- MEMORY_SYSTEM prompt exists and forbids invention ---
+    from src.config import MEMORY_SYSTEM
+    check("MEMORY_SYSTEM is non-empty str",
+          isinstance(MEMORY_SYSTEM, str) and len(MEMORY_SYSTEM) > 50)
+    check("MEMORY_SYSTEM mentions since last session",
+          "since last session" in MEMORY_SYSTEM.lower())
+
     print(f"\n{_passed} checks passed.")
 
 
