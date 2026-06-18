@@ -1,0 +1,77 @@
+"""Standalone tests for src/agent/memory.py. No network, no Streamlit."""
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.agent import memory as mem
+
+_passed = 0
+def check(name, cond):
+    global _passed
+    if cond:
+        print(f"PASS  {name}"); _passed += 1
+    else:
+        print(f"FAIL  {name}"); sys.exit(1)
+
+
+def _sig(sid, sev=50, head=None):
+    return {"id": sid, "severity": sev, "headline": head or f"{sid} headline",
+            "icon": "x", "detail": "d", "action_label": "a", "action_prompt": "p"}
+
+
+def main():
+    # --- ACTION_SIGNAL_MAP covers the three real tools ---
+    check("map has export_target_list", "export_target_list" in mem.ACTION_SIGNAL_MAP)
+    check("map has draft_campaign_emails", "draft_campaign_emails" in mem.ACTION_SIGNAL_MAP)
+    check("map has build_action_plan", "build_action_plan" in mem.ACTION_SIGNAL_MAP)
+    check("export maps to churn", "churn" in mem.ACTION_SIGNAL_MAP["export_target_list"])
+
+    # --- diff_signals: no prior snapshot -> everything is 'new', nothing else ---
+    empty_mem = {"last_snapshot": None, "action_log": []}
+    d0 = mem.diff_signals([_sig("churn"), _sig("segment_gap")], empty_mem)
+    check("no snapshot -> 2 new", len(d0["new"]) == 2)
+    check("no snapshot -> 0 still_present", d0["still_present"] == [])
+    check("no snapshot -> 0 resolved", d0["resolved"] == [])
+
+    # --- diff_signals: new / still_present / resolved buckets ---
+    prior = {
+        "last_snapshot": {
+            "when": "2026-06-10T00:00:00",
+            "params": {"top_pct": 10, "churn_days": 30, "n": 6},
+            "signals": [{"id": "churn", "severity": 80, "headline": "old churn"},
+                        {"id": "segment_gap", "severity": 40, "headline": "old gap"}],
+        },
+        "action_log": [],
+    }
+    cur = [_sig("churn", 70), _sig("power_value", 30)]
+    d1 = mem.diff_signals(cur, prior)
+    check("still_present is churn", [s["id"] for s in d1["still_present"]] == ["churn"])
+    check("new is power_value", [s["id"] for s in d1["new"]] == ["power_value"])
+    check("resolved is segment_gap", [s["id"] for s in d1["resolved"]] == ["segment_gap"])
+
+    # --- acted_on: action after snapshot, mapped to a present signal ---
+    prior_acted = dict(prior)
+    prior_acted["action_log"] = [
+        {"action": "export_target_list", "when": "2026-06-12T00:00:00"},  # after snapshot, maps to churn
+        {"action": "draft_campaign_emails", "when": "2026-06-01T00:00:00"},  # BEFORE snapshot -> ignored
+    ]
+    d2 = mem.diff_signals([_sig("churn")], prior_acted)
+    churn_entry = d2["still_present"][0]
+    check("churn acted_on True", churn_entry["acted_on"] is True)
+
+    prior_noact = dict(prior); prior_noact["action_log"] = []
+    d3 = mem.diff_signals([_sig("churn")], prior_noact)
+    check("churn acted_on False when no action", d3["still_present"][0]["acted_on"] is False)
+
+    # --- continuity_line ---
+    check("continuity empty when no snapshot", mem.continuity_line(d0) == "")
+    line = mem.continuity_line(d2)
+    check("continuity is a string", isinstance(line, str) and line.startswith("Since last session"))
+    check("continuity mentions acted", "already acted" in line)
+
+    print(f"\n{_passed} checks passed.")
+
+
+if __name__ == "__main__":
+    main()
