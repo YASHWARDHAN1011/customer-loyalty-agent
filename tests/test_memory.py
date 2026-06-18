@@ -70,6 +70,52 @@ def main():
     check("continuity is a string", isinstance(line, str) and line.startswith("Since last session"))
     check("continuity mentions acted", "already acted" in line)
 
+    # --- disk I/O round-trip in a temp path ---
+    import tempfile
+    tmp = os.path.join(tempfile.mkdtemp(), "agent_memory.json")
+
+    # absent file -> well-formed empty default
+    d_empty = mem.load_memory(path=tmp)
+    check("absent -> default shape",
+          d_empty == {"last_snapshot": None, "action_log": []})
+
+    # record a snapshot, read it back
+    sigs = [_sig("churn", 80), _sig("segment_gap", 40)]
+    params = {"top_pct": 10, "churn_days": 30, "n": 6}
+    mem.record_snapshot(sigs, params, path=tmp)
+    loaded = mem.load_memory(path=tmp)
+    check("snapshot persisted", loaded["last_snapshot"]["params"] == params)
+    check("snapshot trims fields",
+          set(loaded["last_snapshot"]["signals"][0].keys()) == {"id", "severity", "headline"})
+
+    # overwrite guard: same params -> no change; the 'when' stays put
+    first_when = loaded["last_snapshot"]["when"]
+    mem.record_snapshot([_sig("churn", 10)], params, path=tmp)  # same params
+    guarded = mem.load_memory(path=tmp)
+    check("same params -> snapshot unchanged",
+          guarded["last_snapshot"]["when"] == first_when
+          and len(guarded["last_snapshot"]["signals"]) == 2)
+
+    # changed params -> overwrite
+    mem.record_snapshot([_sig("churn", 10)], {"top_pct": 20, "churn_days": 30, "n": 6}, path=tmp)
+    changed = mem.load_memory(path=tmp)
+    check("changed params -> overwrite", changed["last_snapshot"]["params"]["top_pct"] == 20)
+
+    # record_action appends with a timestamp
+    mem.record_action("export_target_list", path=tmp, now="2026-06-18T12:00:00")
+    after = mem.load_memory(path=tmp)
+    check("action logged", after["action_log"][-1]["action"] == "export_target_list")
+    check("action has when", after["action_log"][-1]["when"] == "2026-06-18T12:00:00")
+
+    # clear wipes the file
+    mem.clear_memory(path=tmp)
+    check("cleared -> default", mem.load_memory(path=tmp) == {"last_snapshot": None, "action_log": []})
+
+    # best-effort: corrupt file -> default, never raises
+    with open(tmp, "w", encoding="utf-8") as f:
+        f.write("{ not json")
+    check("corrupt -> default", mem.load_memory(path=tmp) == {"last_snapshot": None, "action_log": []})
+
     print(f"\n{_passed} checks passed.")
 
 

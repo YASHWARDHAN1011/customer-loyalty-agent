@@ -102,3 +102,69 @@ def continuity_line(diff):
         n = len(diff["new"])
         parts.append(f"{n} new signal{'s' if n != 1 else ''}")
     return "Since last session: " + "; ".join(parts) + "."
+
+
+# ── Disk I/O (best-effort; never raises) ──────────────────────────────────────
+
+STATE_DIR = ".app_state"
+MEMORY_FILE = os.path.join(STATE_DIR, "agent_memory.json")
+
+
+def load_memory(path=MEMORY_FILE):
+    """Return the stored memory dict, or a fresh default if absent/corrupt."""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            return {"last_snapshot": None, "action_log": []}
+        data.setdefault("last_snapshot", None)
+        data.setdefault("action_log", [])
+        return data
+    except (FileNotFoundError, json.JSONDecodeError, OSError, ValueError):
+        return {"last_snapshot": None, "action_log": []}
+
+
+def _save(data, path):
+    try:
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+    except Exception:
+        pass
+
+
+def record_snapshot(signals, params, path=MEMORY_FILE):
+    """Write current signals + params as the last snapshot.
+
+    Overwrite guard: if a snapshot already exists with identical `params`, leave
+    it untouched so the baseline stays stable across same-config sessions and
+    intra-session reruns never wipe it.
+    """
+    data = load_memory(path=path)
+    snap = data.get("last_snapshot")
+    if snap and snap.get("params") == params:
+        return
+    data["last_snapshot"] = {
+        "when": datetime.now().isoformat(timespec="seconds"),
+        "params": params,
+        "signals": [_trim(s) for s in (signals or [])],
+    }
+    _save(data, path)
+
+
+def record_action(action_name, path=MEMORY_FILE, now=None):
+    """Append a {action, when} entry to the action log (best-effort)."""
+    data = load_memory(path=path)
+    data["action_log"].append({
+        "action": action_name,
+        "when": now or datetime.now().isoformat(timespec="seconds"),
+    })
+    _save(data, path)
+
+
+def clear_memory(path=MEMORY_FILE):
+    """Delete the memory file (best-effort)."""
+    try:
+        os.remove(path)
+    except (FileNotFoundError, OSError):
+        pass
