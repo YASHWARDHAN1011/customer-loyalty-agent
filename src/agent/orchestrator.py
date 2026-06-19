@@ -85,6 +85,11 @@ TOOL_REGISTRY = {
         "desc": "Compile a downloadable prioritized retention checklist (needs scoring first).",
         "args": {"churn_days": "int"},
     },
+    "simulate_campaign": {
+        "func": T.simulate_campaign,
+        "desc": "Project a what-if campaign: lift one feature for regular users by a percent and count how many become power users (needs scoring first).",
+        "args": {"feature": "str", "lift_pct": "float"},
+    },
 }
 
 

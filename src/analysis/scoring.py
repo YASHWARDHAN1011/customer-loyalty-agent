@@ -8,45 +8,66 @@ No Streamlit dependency — can be tested independently.
 import pandas as pd
 
 
-def score_users(features: pd.DataFrame, weights: dict):
-    """
-    Score every user 0-100 using weighted features.
+def compute_scaler(features: pd.DataFrame, weights: dict):
+    """Fit the scoring scaler from a baseline population.
 
-    Steps:
-    1. For each feature: cap at 95th percentile, normalize 0-100
-    2. Multiply each normalized feature by its weight
-    3. Sum weighted features = raw score
-    4. Normalize raw scores to 0-100 final scale
+    Returns {"caps": {col: 95th-pctile cap}, "max_raw": float} — the parameters
+    that make loyalty scores comparable. Freeze these to score a hypothetical
+    population on the same yardstick (see src/analysis/simulation.py).
+    """
+    df = features.copy()
+    caps = {}
+    raw = pd.Series(0.0, index=df.index)
+    for col, weight in weights.items():
+        if col in df.columns:
+            cap = df[col].quantile(0.95)
+            caps[col] = cap
+            if cap > 0:
+                normalized = (df[col].clip(upper=cap) / cap) * 100
+            else:
+                normalized = pd.Series(0.0, index=df.index)
+            raw += normalized * float(weight)
+    return {"caps": caps, "max_raw": float(raw.max())}
+
+
+def apply_scoring(features: pd.DataFrame, weights: dict, scaler: dict):
+    """Score users with a *provided* scaler (caps + max_raw).
+
+    Same math as the original score_users, but using the frozen scaler instead of
+    deriving it from `features`. Returns the df with `raw_score`/`loyalty_score`,
+    sorted by loyalty_score descending.
     """
     df = features.copy()
     df['raw_score'] = 0.0
-
+    caps = scaler.get("caps", {})
     for col, weight in weights.items():
         if col in df.columns:
-            # Cap outliers at 95th percentile
-            # This prevents extreme users from dominating
-            cap = df[col].quantile(0.95)
-            if cap > 0:
-                # clip sets values above cap to exactly cap
-                # Then normalize to 0-100
-                normalized = (
-                    df[col].clip(upper=cap) / cap
-                ) * 100
+            cap = caps.get(col)
+            if cap is None:
+                cap = df[col].quantile(0.95)
+            if cap and cap > 0:
+                normalized = (df[col].clip(upper=cap) / cap) * 100
             else:
                 normalized = pd.Series(0.0, index=df.index)
-            # Add weighted contribution
             df['raw_score'] += normalized * float(weight)
 
-    # Final normalization to 0-100
-    max_score = df['raw_score'].max()
-    if max_score > 0:
-        df['loyalty_score'] = (
-            df['raw_score'] / max_score * 100
-        ).round(2)
+    max_raw = scaler.get("max_raw")
+    if max_raw and max_raw > 0:
+        df['loyalty_score'] = (df['raw_score'] / max_raw * 100).round(2)
     else:
         df['loyalty_score'] = 0.0
 
     return df.sort_values('loyalty_score', ascending=False)
+
+
+def score_users(features: pd.DataFrame, weights: dict):
+    """Score every user 0-100 using weighted features.
+
+    Thin wrapper: fit the scaler from this population, then apply it. Behavior is
+    identical to the original single-function implementation.
+    """
+    scaler = compute_scaler(features, weights)
+    return apply_scoring(features, weights, scaler)
 
 
 def get_power_users(scored_df, top_pct):
