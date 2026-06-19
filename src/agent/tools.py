@@ -28,6 +28,7 @@ from src.analysis.happy_path import get_happy_paths
 from src.analysis.segmentation import compute_segment_gaps, build_comparison_data
 from src.analysis.interventions import INTERVENTION_TEMPLATES, compute_intervention_gaps
 from src.analysis.metrics import calculate_churn_risk
+from src.analysis import simulation
 
 import uuid
 from datetime import date
@@ -730,6 +731,73 @@ def build_action_plan(churn_days: int = 30) -> dict:
     }
 
 
+def simulate_campaign(feature: str, lift_pct: float) -> dict:
+    """
+    Projects a what-if campaign: lift ONE behavioral feature for regular users by
+    a percentage and count how many would cross the loyalty bar into power-user
+    status. Deterministic — re-scores against the frozen baseline.
+
+    Use this when the user asks "what if", to forecast/simulate/project the impact
+    of a campaign, or asks how many regular users a behavioral improvement would
+    convert.
+
+    Args:
+        feature: which feature to lift. One of: total_orders, reorder_rate,
+                 dept_diversity, avg_basket_size, total_items.
+        lift_pct: percentage increase to apply (0-200), e.g. 15 for +15%.
+    """
+    features = st.session_state.get('features')
+    weights = st.session_state.get('weights')
+    if features is None or weights is None:
+        return {
+            "error": "Data not loaded yet.",
+            "instruction": "Tell the user to load data / run scoring first.",
+        }
+
+    if feature not in simulation.LEVERS:
+        return {
+            "error": f"'{feature}' is not a simulatable feature.",
+            "instruction": (
+                "Tell the user simulation only supports these features: "
+                + ", ".join(simulation.LEVERS) + "."
+            ),
+        }
+
+    if lift_pct is None or lift_pct < 0 or lift_pct > 200:
+        return {
+            "error": "lift_pct must be between 0 and 200.",
+            "instruction": "Ask the user for a lift percentage between 0 and 200.",
+        }
+
+    top_pct = st.session_state.get('top_pct', 10)
+    result = simulation.simulate_campaign(
+        features, weights, top_pct, feature, lift_pct
+    )
+
+    pretty = feature.replace('_', ' ')
+    card = (
+        f"### 🔮 Campaign Simulation — {pretty} +{lift_pct:.0f}%\n\n"
+        f"- Target: **{result['target_count']:,}** regular users\n"
+        f"- Projected conversions: **{result['conversions']:,}** cross the "
+        f"loyalty bar\n"
+        f"- Power users: {result['baseline_power_count']:,} → "
+        f"**{result['projected_power_count']:,}** "
+        f"({result['projected_power_pct']}%)\n"
+        f"- {pretty} avg (regulars): {result['feature_avg_before']} → "
+        f"**{result['feature_avg_after']}**\n"
+    )
+    st.session_state.ui_history.append({
+        "role": "assistant", "type": "text", "content": card,
+    })
+
+    result["instruction"] = (
+        "Summarize this campaign projection in 2-3 sentences using ONLY these "
+        "numbers. Lead with the projected conversions and the new power-user "
+        "percentage. Do not invent any figure not present here."
+    )
+    return result
+
+
 # All tools Gemini can call
 ALL_TOOLS = [
     run_scoring_analysis,
@@ -743,4 +811,5 @@ ALL_TOOLS = [
     export_target_list,
     draft_campaign_emails,
     build_action_plan,
+    simulate_campaign,
 ]
