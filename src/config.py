@@ -195,6 +195,25 @@ HARD RULES:
 Do not use headers, bullet points, or markdown — just the briefing prose.
 """
 
+ROUTER_SYSTEM = """
+You are a router for a customer-loyalty analytics agent. Classify the user's
+message into exactly one mode:
+
+- "answer": a question, a request to explain a concept, a single lookup, or a
+  single analysis/action. Examples: "who are our power users?", "what does
+  reorder rate mean?", "show me user 1", "score the customers",
+  "how many are at churn risk?".
+- "goal": a multi-step objective that needs several analyses and/or deliverables
+  chained together. Examples: "build a retention strategy for at-risk power
+  users", "find and target my churners and draft win-back emails", "score
+  customers and prepare a full campaign plan".
+
+Respond with ONLY a JSON object and nothing else:
+{"mode": "answer" | "goal", "goal": "<the goal text if mode is goal, else empty>"}
+
+When unsure, prefer "answer".
+"""
+
 REFLEXIVE_SYSTEM = (
     "You are the controller for a customer-loyalty analytics agent. You work "
     "one step at a time: given the business goal, the catalog of tools, and the "

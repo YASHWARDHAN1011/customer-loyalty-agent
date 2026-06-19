@@ -10,6 +10,29 @@ This file has two jobs:
 
 ## 📓 Project Journal
 
+### 2026-06-19 — Agentic Chat (chat absorbs Autopilot)
+Made the AI Chat a real agent and retired the separate Autopilot tab.
+- **`src/agent/router.py`** (NEW, pure): `route(message)` classifies each message
+  as a quick `answer` or a multi-step `goal` via one small LLM call under
+  `ROUTER_SYSTEM`; defaults to `answer` on any failure (safe + cheap).
+- **`src/config.py`**: added `ROUTER_SYSTEM`.
+- **`src/ui/tabs/chat.py`**: free-form messages are routed — `answer` → the
+  existing reactive `call_agent`; `goal` → the reflexive loop
+  (`run_reflexive`) run inline with live 🧠 reason / ▶️ action, then
+  `synthesize_goal`; the summary lands in the conversation and a synthetic
+  `{user,goal}/{model,summary}` pair is pushed into `chat_history` so follow-ups
+  have context. The consolidated "📦 Deliverables" panel moved here from the
+  Autopilot tab.
+- **`app.py`**: dropped from 7 tabs to 6 — the Autopilot tab is removed.
+- **Deleted `src/ui/tabs/autopilot.py`** — its engine (`orchestrator`) is reused
+  by the chat unchanged.
+- Grounding unchanged: routing is a judgment call (no business numbers); the loop
+  and tools stay grounded.
+- Tests: `tests/test_router.py` (classification + default-to-answer). No network.
+  Full suite green; app boots headless HTTP 200. Quick-action buttons still call
+  `call_agent` directly (deliberate single actions, no routing).
+- Gemini-only; provider abstraction is still a later phase.
+
 ### 2026-06-19 — Proactive Analyst, Phase 4: What-If Simulation
 Gave the agent a grounded campaign simulator — it can now project the impact of a
 behavioral lift before you run the campaign.

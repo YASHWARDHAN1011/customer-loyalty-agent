@@ -6,8 +6,10 @@ Renders Tab 6: AI Chat.
 
 import streamlit as st
 from src.config import API_KEYS, MODEL_ARSENAL
-from src.ui.renderer import render_message
+from src.ui.renderer import render_message, download_key
 from src.agent.caller import call_agent
+from src.agent.router import route
+from src.agent.orchestrator import run_reflexive, synthesize_goal
 from src.agent.proactive import get_briefing
 from src.utils.persistence import save_session, clear_session
 
@@ -55,6 +57,8 @@ def render_chat(features, orders):
 
     render_briefing()
 
+    _deliverables_panel()
+
     # New conversation — clears the saved session and resets the chat.
     _, nc_col = st.columns([3, 1])
     with nc_col:
@@ -95,8 +99,8 @@ def render_chat(features, orders):
         render_message(msg)
 
     if prompt := st.chat_input(
-        "Ask about your customers... "
-        "(e.g. 'Who are our power users?')"
+        "Ask anything, or give a goal... "
+        "(e.g. 'Who are our power users?' or 'Build a retention plan')"
     ):
         st.session_state.ui_history.append({
             "role": "user",
@@ -107,14 +111,17 @@ def render_chat(features, orders):
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        with st.spinner("🧠 Agent thinking..."):
-            response = call_agent(prompt)
-
-        st.session_state.ui_history.append({
-            "role": "assistant",
-            "type": "text",
-            "content": response
-        })
+        decision = route(prompt)
+        if decision["mode"] == "goal":
+            _run_goal_in_chat(decision["goal"] or prompt)
+        else:
+            with st.spinner("🧠 Agent thinking..."):
+                response = call_agent(prompt)
+            st.session_state.ui_history.append({
+                "role": "assistant",
+                "type": "text",
+                "content": response
+            })
 
         save_session()
         st.rerun()
@@ -226,3 +233,55 @@ def _handle_quick_action(prompt: str):
     })
     save_session()
     st.rerun()
+
+
+def _run_goal_in_chat(goal: str):
+    """Run the reflexive loop for a goal, live in the chat, then summarize.
+
+    Mirrors the old Autopilot tab: shows 🧠 reason / ▶️ action per step, renders
+    the tools' inline output, posts an executive summary into the conversation,
+    and injects a synthetic turn into chat_history so follow-ups have context.
+    """
+    start = len(st.session_state.ui_history)
+
+    with st.status("Thinking…", expanded=True) as status:
+        def _on_step(reason, label):
+            if reason:
+                st.markdown(f"🧠 _{reason}_")
+            if label:
+                st.write(f"▶️ **{label}**")
+
+        history = run_reflexive(goal, status_callback=_on_step)
+        status.update(label="Goal complete", state="complete", expanded=False)
+
+    # Inline analysis output produced by the tools (charts/tables/text only;
+    # artifacts live in the deliverables panel).
+    for msg in st.session_state.ui_history[start:]:
+        if msg.get("type") != "artifact":
+            render_message(msg)
+
+    summary = synthesize_goal(goal, history)
+    if summary:
+        st.session_state.ui_history.append({
+            "role": "assistant", "type": "text", "content": summary,
+        })
+        # Continuity: let later reactive follow-ups see what the agent did.
+        st.session_state.chat_history.append({"role": "user", "parts": [goal]})
+        st.session_state.chat_history.append({"role": "model", "parts": [summary]})
+
+
+def _deliverables_panel():
+    """List every artifact produced this session (moved from the Autopilot tab)."""
+    arts = st.session_state.get('artifacts', [])
+    if not arts:
+        return
+    with st.expander("📦 Deliverables", expanded=False):
+        st.caption("Every file the agent has produced this session.")
+        for a in arts:
+            st.download_button(
+                label=a['label'],
+                data=a['content'],
+                file_name=a['filename'],
+                mime=a['mime'],
+                key=download_key(),
+            )
