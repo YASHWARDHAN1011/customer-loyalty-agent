@@ -10,6 +10,32 @@ This file has two jobs:
 
 ## 📓 Project Journal
 
+### 2026-06-19 — Proactive Analyst, Phase 4: What-If Simulation
+Gave the agent a grounded campaign simulator — it can now project the impact of a
+behavioral lift before you run the campaign.
+- **`src/analysis/scoring.py`**: refactored into `compute_scaler` (fit caps +
+  max_raw) and `apply_scoring` (score with a *provided* scaler); `score_users`
+  now delegates to them and is behavior-identical. This lets a hypothetical
+  population be scored on the baseline's frozen yardstick.
+- **`src/analysis/simulation.py`** (NEW, pure): `LEVERS` (the 5 weighted scoring
+  features) + `simulate_campaign(features, weights, top_pct, feature, lift_pct)`
+  — lifts one feature for regular users only, re-scores with the frozen scaler,
+  and counts how many clear the original cutoff. Returns conversions +
+  projected power count/% + the feature's before→after average. `reorder_rate`
+  is clipped to ≤ 1.0; the lifted column is cast to float first (pandas 2.x
+  refuses to write floats into an int column).
+- **`src/agent/tools.py`**: `simulate_campaign(feature, lift_pct)` tool — validates
+  the lever + range, calls the engine, renders a 🔮 card, returns a
+  narrate-only-these-numbers instruction. Added to `ALL_TOOLS`.
+- **`src/agent/orchestrator.py`**: registered in `TOOL_REGISTRY` so Autopilot can
+  plan it.
+- Grounding unchanged: the engine computes every number; the LLM only narrates.
+- Tests: `tests/test_scoring.py` (refactor + frozen-scaler property),
+  `tests/test_simulation.py` (conversions, monotonicity, clip, shape). No network.
+  Full suite green; app boots headless HTTP 200.
+- Scope: single-feature lever, regulars only, % lift, conversions + deltas only —
+  no churn modelling, no new tab. Gemini-only; provider abstraction is Phase 5.
+
 ### 2026-06-18 — Proactive Analyst, Phase 3: Memory / Continuity
 Gave the briefing a durable, cross-session memory so it stops being amnesiac.
 - **`src/agent/memory.py`** (NEW, Streamlit-free, best-effort like
