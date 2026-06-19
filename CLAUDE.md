@@ -10,6 +10,30 @@ This file has two jobs:
 
 ## 📓 Project Journal
 
+### 2026-06-19 — Phase 5: Provider Abstraction (Gemini → Claude failover)
+Gemini daily-quota exhaustion is no longer a hard wall for text/reasoning calls.
+- **`src/config.py`**: loads `ANTHROPIC_API_KEY`, adds `CLAUDE_MODELS`
+  (`claude-haiku-4-5-20251001`) and a pure `build_llm_arsenal(...)`; `LLM_ARSENAL`
+  = Gemini combos first, then Claude combos (only if an Anthropic key exists).
+  `MODEL_ARSENAL` kept as the Gemini-only subset.
+- **`src/agent/providers.py`** (NEW, no Streamlit): `gemini_generate_text` /
+  `claude_generate_text` adapters (Claude system prompt cached, anthropic SDK
+  imported lazily) + pure `is_eligible` (tool calls are Gemini-only) and
+  `provider_text` (dispatch by provider).
+- **`src/agent/caller.py`**: `generate()` rotates over `LLM_ARSENAL`; tool-less
+  text calls dispatch via the adapters and fall through Gemini→Claude on
+  exhaustion; the Gemini tool path (`call_agent`) is unchanged and stays
+  Gemini-only.
+- **`requirements.txt`**: added `anthropic`.
+- **`src/ui/sidebar.py` / `src/ui/tabs/chat.py`**: combo counters now reflect the
+  full `LLM_ARSENAL`.
+- Boundary: only the narration/reasoning layer fails over to Claude; the reactive
+  tool-using chat still needs Gemini. Grounding unchanged.
+- Graceful degradation: no Anthropic key ⇒ `LLM_ARSENAL == MODEL_ARSENAL` ⇒
+  identical to before.
+- Tests: `tests/test_providers.py` (arsenal build, eligibility, dispatch,
+  simulated failover). No network. Full suite green; app boots HTTP 200.
+
 ### 2026-06-19 — Agentic Chat (chat absorbs Autopilot)
 Made the AI Chat a real agent and retired the separate Autopilot tab.
 - **`src/agent/router.py`** (NEW, pure): `route(message)` classifies each message
@@ -266,12 +290,17 @@ Standalone scripts (not pytest); each exits non-zero on failure:
 ## Environment
 
 API keys live in **`.env` in this directory** as `GEMINI_KEY_1` … `GEMINI_KEY_N`
-(up to 10). `src/config.py` reads each via `_get_secret()` — which checks
-`st.secrets` first (Streamlit Cloud) then `os.getenv` (local `.env`) — and builds
-`MODEL_ARSENAL`, every key × model combination, for automatic failover.
+(up to 10), plus an optional `ANTHROPIC_API_KEY`. `src/config.py` reads each via
+`_get_secret()` — which checks `st.secrets` first (Streamlit Cloud) then
+`os.getenv` (local `.env`). It builds `MODEL_ARSENAL` (every Gemini key × model
+combination) and `LLM_ARSENAL` = those Gemini combos followed by Claude combos
+(appended only when `ANTHROPIC_API_KEY` is set). `generate()` rotates over
+`LLM_ARSENAL`, so when Gemini quota is exhausted the text/reasoning calls fail
+over to Claude. With no Anthropic key, `LLM_ARSENAL == MODEL_ARSENAL` and
+behavior is unchanged.
 
 Core dependencies (see `requirements.txt`): `streamlit`, `pandas`, `numpy`,
-`altair`, `google-generativeai`, `python-dotenv`, `pyarrow`.
+`altair`, `google-generativeai`, `anthropic`, `python-dotenv`, `pyarrow`.
 
 Runtime state (gitignored) lives in `.app_state/`: `onboarding.json` (first-run
 flag) and `chat_session.json` (saved chat).
@@ -317,9 +346,16 @@ No Streamlit imports — pure Python, independently testable.
 
 ### AI agent (`src/agent/`)
 
-- **`caller.py`** — `call_agent(prompt)` iterates `MODEL_ARSENAL` via
-  `model_idx % len(MODEL_ARSENAL)`, advances `model_idx` on quota/permission/not-found
-  errors, and snapshots/rolls back `ui_history` on failure.
+- **`caller.py`** — `generate()` rotates over `LLM_ARSENAL` via
+  `model_idx % len(LLM_ARSENAL)`, advancing `model_idx` and rolling back
+  `ui_history` on quota/permission/not-found errors. **Tool-less text calls**
+  dispatch to a provider adapter and fail over Gemini→Claude; the **tool-using
+  chat** (`call_agent`, automatic function calling) is Gemini-only and uses the
+  inline chat path unchanged.
+- **`providers.py`** — `gemini_generate_text` / `claude_generate_text` adapters
+  (one non-streaming text call each), plus pure `is_eligible` (tool calls are
+  Gemini-only) and `provider_text` (dispatch a tool-less call to the combo's
+  provider). The `anthropic` SDK is imported lazily.
 - **`tools.py`** — functions in `ALL_TOOLS` that Gemini calls via function calling;
   each reads/writes `st.session_state` and appends to `ui_history`.
 
@@ -370,8 +406,9 @@ A `ui_history` entry has `role`, `type` (`"text"`, `"table"`, or `"chart"`), plu
 
 - Keep `src/analysis/` Streamlit-free.
 - `@st.cache_data` functions prefix large DataFrame args with `_` to skip hashing.
-- `MODEL_ARSENAL` entries are `{"key", "model", "label"}`; `model_idx` wraps with
-  `% len(MODEL_ARSENAL)`.
+- `LLM_ARSENAL` entries are `{"provider", "key", "model", "label"}` (`MODEL_ARSENAL`
+  is the Gemini-only subset); `model_idx` wraps with `% len(LLM_ARSENAL)`. Claude
+  combos are eligible only for tool-less text calls.
 - Persistence and onboarding state are best-effort and must never crash the app.
 - **Keep this journal updated**: when you make a notable change, add a dated entry
   at the top of the Project Journal.

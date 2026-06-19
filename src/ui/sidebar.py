@@ -7,7 +7,7 @@ Renders the sidebar with API status, dataset stats, settings, and exports.
 import streamlit as st
 from datetime import datetime
 
-from src.config import API_KEYS, MODEL_ARSENAL
+from src.config import API_KEYS, LLM_ARSENAL
 from src.export.generator import generate_csv_export
 from src.export.generator import generate_summary_report
 from src.ui.onboarding import start_tour
@@ -34,21 +34,21 @@ def render_sidebar(features, orders, run_btn_callback):
             st.caption("Add GEMINI_KEY_1=your_key to .env file")
         else:
             current_idx = (
-                st.session_state.model_idx % len(MODEL_ARSENAL)
+                st.session_state.model_idx % len(LLM_ARSENAL)
             )
-            current_combo = MODEL_ARSENAL[current_idx]
+            current_combo = LLM_ARSENAL[current_idx]
 
             st.success(f"✅ {len(API_KEYS)} key(s) loaded")
             st.caption(
                 f"Active: {current_combo['model']} "
-                f"(combo {current_idx + 1}/{len(MODEL_ARSENAL)})"
+                f"(combo {current_idx + 1}/{len(LLM_ARSENAL)})"
             )
 
-            used = min(st.session_state.model_idx, len(MODEL_ARSENAL))
-            remaining = len(MODEL_ARSENAL) - used
+            used = min(st.session_state.model_idx, len(LLM_ARSENAL))
+            remaining = len(LLM_ARSENAL) - used
             st.progress(
-                used / len(MODEL_ARSENAL),
-                text=f"{remaining}/{len(MODEL_ARSENAL)} combos remaining"
+                used / len(LLM_ARSENAL),
+                text=f"{remaining}/{len(LLM_ARSENAL)} combos remaining"
             )
 
         st.divider()

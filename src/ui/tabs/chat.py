@@ -5,7 +5,7 @@ Renders Tab 6: AI Chat.
 """
 
 import streamlit as st
-from src.config import API_KEYS, MODEL_ARSENAL
+from src.config import API_KEYS, LLM_ARSENAL
 from src.ui.renderer import render_message, download_key
 from src.agent.caller import call_agent
 from src.agent.router import route
@@ -29,8 +29,8 @@ def render_chat(features, orders):
             "then restart the app."
         )
     else:
-        idx = st.session_state.model_idx % len(MODEL_ARSENAL)
-        active = MODEL_ARSENAL[idx]
+        idx = st.session_state.model_idx % len(LLM_ARSENAL)
+        active = LLM_ARSENAL[idx]
 
         status_col1, status_col2, status_col3 = st.columns(3)
         with status_col1:
@@ -45,12 +45,12 @@ def render_chat(features, orders):
             )
         with status_col3:
             used = min(
-                st.session_state.model_idx, len(MODEL_ARSENAL)
+                st.session_state.model_idx, len(LLM_ARSENAL)
             )
-            remaining = len(MODEL_ARSENAL) - used
+            remaining = len(LLM_ARSENAL) - used
             st.metric(
                 "Combos Remaining",
-                f"{remaining}/{len(MODEL_ARSENAL)}"
+                f"{remaining}/{len(LLM_ARSENAL)}"
             )
 
     st.divider()

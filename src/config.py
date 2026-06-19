@@ -62,6 +62,39 @@ MODEL_ARSENAL = [
     for m in MODELS
 ]
 
+# ── Provider abstraction: Claude failover tier ───────────────────────────────
+# When Gemini combos are quota-exhausted, tool-less text calls fall through to
+# Claude. If no Anthropic key is configured, the arsenal is Gemini-only and
+# behavior is identical to before.
+
+ANTHROPIC_API_KEY = _get_secret("ANTHROPIC_API_KEY")
+
+CLAUDE_MODELS = ["claude-haiku-4-5-20251001"]
+
+
+def build_llm_arsenal(api_keys, models, anthropic_key, claude_models):
+    """Build the unified provider rotation: Gemini combos first, then Claude.
+
+    Pure (no Streamlit, no network). Each entry is
+    {"provider", "key", "model", "label"}. Claude combos are appended only when
+    `anthropic_key` is truthy.
+    """
+    arsenal = [
+        {"provider": "gemini", "key": k, "model": m, "label": f"Key{i+1}+{m}"}
+        for i, k in enumerate(api_keys)
+        for m in models
+    ]
+    if anthropic_key:
+        arsenal += [
+            {"provider": "claude", "key": anthropic_key, "model": m,
+             "label": f"Claude+{m}"}
+            for m in claude_models
+        ]
+    return arsenal
+
+
+LLM_ARSENAL = build_llm_arsenal(API_KEYS, MODELS, ANTHROPIC_API_KEY, CLAUDE_MODELS)
+
 
 def get_working_model_idx():
     """
