@@ -748,7 +748,7 @@ def simulate_campaign(feature: str, lift_pct: float) -> dict:
     """
     features = st.session_state.get('features')
     weights = st.session_state.get('weights')
-    if features is None or weights is None:
+    if features is None or weights is None or len(features) == 0:
         return {
             "error": "Data not loaded yet.",
             "instruction": "Tell the user to load data / run scoring first.",
