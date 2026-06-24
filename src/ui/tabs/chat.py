@@ -7,11 +7,36 @@ Renders Tab 6: AI Chat.
 import streamlit as st
 from src.config import API_KEYS, LLM_ARSENAL
 from src.ui.renderer import render_message, download_key
-from src.agent.caller import call_agent
+from src.agent.caller import call_agent, probe_health
 from src.agent.router import route
 from src.agent.orchestrator import run_reflexive, synthesize_goal
 from src.agent.proactive import get_briefing
 from src.utils.persistence import save_session, clear_session
+
+
+@st.cache_data(ttl=120, show_spinner=False)
+def _api_health():
+    """Cached upfront health check (re-probes at most every 2 minutes)."""
+    return probe_health()
+
+
+def _render_api_banner():
+    """Show an upfront banner when the chat can't reach the LLM, before the
+    user wastes a message. Cached so it costs at most one ping every 2 min."""
+    if not API_KEYS:
+        return  # the no-keys error is already shown in render_chat below
+    try:
+        status = _api_health()
+    except Exception:
+        return  # never let the health check break the tab
+    if status == "exhausted":
+        st.error(
+            "⚠️ **All Gemini API keys are out of quota right now**, so the chat "
+            "can't answer. The analysis tabs, briefing and Watches still work. "
+            "Free-tier quota resets at midnight US Pacific — or add a fresh key "
+            "(`GEMINI_KEY_5=…` in `.env`, then restart). "
+            "Get one at https://aistudio.google.com/apikey"
+        )
 
 
 def render_chat(features, orders):
@@ -21,6 +46,8 @@ def render_chat(features, orders):
         "analysis tools, interpret results, and answer "
         "questions about your customers."
     )
+
+    _render_api_banner()
 
     if not API_KEYS:
         st.error(

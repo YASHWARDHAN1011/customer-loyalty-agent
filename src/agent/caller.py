@@ -128,6 +128,35 @@ def generate(
     }
 
 
+def probe_health(arsenal=None) -> str:
+    """Cheap upfront check of whether the chat can actually reach Gemini.
+
+    Returns "no_keys" (nothing configured), "ok" (a Gemini combo answered), or
+    "exhausted" (every Gemini combo failed — quota/invalid/permission). Chat uses
+    function calling, which is Gemini-only, so only Gemini combos are probed.
+    Fail-fast (no retry) keeps this to well under a second even when all dead.
+    """
+    arsenal = LLM_ARSENAL if arsenal is None else arsenal
+    if not arsenal:
+        return "no_keys"
+    probed_gemini = False
+    seen_keys = set()
+    for combo in arsenal:
+        if combo["provider"] != "gemini" or combo["key"] in seen_keys:
+            continue  # quota is per-key, so one model per key is enough
+        seen_keys.add(combo["key"])
+        probed_gemini = True
+        try:
+            genai.configure(api_key=combo["key"])
+            genai.GenerativeModel(combo["model"]).generate_content(
+                "ping", request_options=FAST_FAIL,
+            )
+            return "ok"
+        except Exception:
+            continue
+    return "exhausted" if probed_gemini else "no_keys"
+
+
 def call_agent(prompt: str) -> str:
     """Chat wrapper: full history + automatic function calling over ALL_TOOLS."""
     result = generate(
