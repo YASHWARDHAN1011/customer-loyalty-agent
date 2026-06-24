@@ -12,6 +12,9 @@ from src.export.generator import generate_csv_export
 from src.export.generator import generate_summary_report
 from src.ui.onboarding import start_tour
 from src.agent.memory import clear_memory
+from src.agent.watches import (
+    WATCHABLE_METRICS, load_watches, add_watch, remove_watch,
+)
 
 
 def render_sidebar(features, orders, run_btn_callback):
@@ -172,5 +175,41 @@ def render_sidebar(features, orders, run_btn_callback):
             st.session_state.pop('_briefing_cache', None)
             st.toast("Cleared the agent's cross-session memory.")
             st.rerun()
+
+        st.divider()
+        st.markdown("### 🔔 Watches")
+        st.caption("Get a banner when a metric crosses a line you set.")
+
+        _metric_labels = {m["id"]: m["label"] for m in WATCHABLE_METRICS}
+        with st.form("add_watch_form", clear_on_submit=True):
+            metric_id = st.selectbox(
+                "Metric",
+                options=[m["id"] for m in WATCHABLE_METRICS],
+                format_func=lambda mid: _metric_labels[mid],
+            )
+            direction = st.radio(
+                "Alert when value is", options=["above", "below"], horizontal=True,
+            )
+            threshold = st.number_input("Threshold", value=0.0, step=1.0)
+            if st.form_submit_button("➕ Add watch", use_container_width=True):
+                try:
+                    add_watch(metric_id, direction, threshold)
+                    st.success("Watch added.")
+                except ValueError as e:
+                    st.error(str(e))
+
+        _watches = load_watches()
+        if _watches:
+            for wch in _watches:
+                label = _metric_labels.get(wch["metric"], wch["metric"])
+                thr = wch["threshold"]
+                thr_txt = int(thr) if float(thr).is_integer() else thr
+                row, btn = st.columns([5, 1])
+                row.markdown(f"**{label}** {wch['direction']} {thr_txt}")
+                if btn.button("🗑", key=f"del_watch_{wch['id']}"):
+                    remove_watch(wch["id"])
+                    st.rerun()
+        else:
+            st.caption("No watches yet.")
 
     return run_btn
