@@ -8,8 +8,11 @@ watches have fired. Every number comes from the analysis layer; alert messages
 are templated, so nothing here can hallucinate.
 """
 
+import json
 import math
 import os
+import uuid
+from datetime import datetime
 
 from src.analysis.metrics import calculate_churn_risk
 from src.analysis.segmentation import compute_segment_gaps
@@ -150,3 +153,77 @@ def evaluate_watches(watches, snapshot):
             "message": message,
         })
     return fired
+
+
+# --- Persistence (best-effort, never raises on I/O) ------------------------
+
+STATE_DIR = ".app_state"
+WATCHES_FILE = os.path.join(STATE_DIR, "watches.json")
+_VALID_DIRECTIONS = ("above", "below")
+
+
+def load_watches(path=WATCHES_FILE):
+    """Return the stored list of watches, or [] if absent/corrupt.
+
+    Filters out entries whose metric is no longer known so the UI/evaluator
+    never sees a dangling watch.
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, list):
+            return []
+        return [
+            wch for wch in data
+            if isinstance(wch, dict) and wch.get("metric") in _METRICS_BY_ID
+        ]
+    except (FileNotFoundError, json.JSONDecodeError, OSError, ValueError):
+        return []
+
+
+def _save(data, path):
+    try:
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f)
+    except Exception:
+        pass
+
+
+def add_watch(metric, direction, threshold, path=WATCHES_FILE):
+    """Validate and persist a new watch; return it.
+
+    Raises ValueError on unknown metric, bad direction, or a non-finite /
+    non-numeric threshold. The file write itself is best-effort.
+    """
+    if metric not in _METRICS_BY_ID:
+        raise ValueError(f"unknown metric: {metric}")
+    if direction not in _VALID_DIRECTIONS:
+        raise ValueError(f"direction must be one of {_VALID_DIRECTIONS}")
+    try:
+        threshold = float(threshold)
+    except (TypeError, ValueError):
+        raise ValueError("threshold must be a number")
+    if not math.isfinite(threshold):
+        raise ValueError("threshold must be finite")
+    watch = {
+        "id": uuid.uuid4().hex,
+        "metric": metric,
+        "direction": direction,
+        "threshold": threshold,
+        "created_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    data = load_watches(path=path)
+    data.append(watch)
+    _save(data, path)
+    return watch
+
+
+def remove_watch(watch_id, path=WATCHES_FILE):
+    """Drop a watch by id; return True if one was removed."""
+    data = load_watches(path=path)
+    kept = [wch for wch in data if wch.get("id") != watch_id]
+    if len(kept) == len(data):
+        return False
+    _save(kept, path)
+    return True

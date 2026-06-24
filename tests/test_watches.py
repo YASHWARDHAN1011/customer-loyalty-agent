@@ -96,7 +96,50 @@ def main():
     check("two fire", len(multi) == 2)
     check("order preserved", multi[0]["watch_id"] == "x" and multi[1]["watch_id"] == "y")
 
+    _persistence()
+
     print(f"\n{_passed} checks passed.")
+
+
+def _persistence():
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "watches.json")
+
+        # empty / missing file -> []
+        check("missing file -> []", w.load_watches(path=path) == [])
+
+        # add a valid watch
+        watch = w.add_watch("churn_pct", "above", 15, path=path)
+        check("add returns id", isinstance(watch.get("id"), str) and watch["id"])
+        check("add persisted", len(w.load_watches(path=path)) == 1)
+        loaded = w.load_watches(path=path)[0]
+        check("threshold coerced to float", loaded["threshold"] == 15.0)
+        check("created_at present", "created_at" in loaded)
+
+        # invalid inputs raise ValueError
+        for bad in [
+            lambda: w.add_watch("nope", "above", 1, path=path),
+            lambda: w.add_watch("churn_pct", "sideways", 1, path=path),
+            lambda: w.add_watch("churn_pct", "above", float("inf"), path=path),
+            lambda: w.add_watch("churn_pct", "above", "abc", path=path),
+        ]:
+            raised = False
+            try:
+                bad()
+            except ValueError:
+                raised = True
+            check("invalid add raises ValueError", raised)
+        check("invalid adds did not persist", len(w.load_watches(path=path)) == 1)
+
+        # remove
+        check("remove unknown -> False", w.remove_watch("missing", path=path) is False)
+        check("remove real -> True", w.remove_watch(watch["id"], path=path) is True)
+        check("removed persisted", w.load_watches(path=path) == [])
+
+        # corrupt file -> []
+        with open(path, "w", encoding="utf-8") as f:
+            f.write("{ not json")
+        check("corrupt file -> []", w.load_watches(path=path) == [])
 
 
 if __name__ == "__main__":
