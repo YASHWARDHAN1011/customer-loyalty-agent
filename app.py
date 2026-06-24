@@ -14,6 +14,7 @@ from src.ui.tabs.interventions import render_interventions
 from src.ui.tabs.chat import render_chat
 from src.ui.onboarding import maybe_show_onboarding
 from src.utils.persistence import load_session
+from src.agent.watches import load_watches, evaluate_watches
 
 apply_theme()
 
@@ -98,7 +99,33 @@ def run_analysis(top_pct):
         )
     st.success(f"✅ Analysis complete — Found **{len(power):,}** power users")
 
+def render_watch_alerts():
+    """Render any fired watch banners above the tabs (best-effort, never crashes)."""
+    scored_df = st.session_state.get("scored_df")
+    if scored_df is None or len(scored_df) == 0:
+        return  # analysis not run yet -> nothing to evaluate
+    snapshot = {
+        "features": st.session_state.get("features"),
+        "power": st.session_state.get("power"),
+        "regular": st.session_state.get("regular"),
+        "power_user_ids": st.session_state.get("power_user_ids") or set(),
+        "cutoff": st.session_state.get("cutoff"),
+        "churn_days": 30,
+    }
+    try:
+        fired = evaluate_watches(load_watches(), snapshot)
+    except Exception:
+        return
+    for alert in fired:
+        if alert["severity"] == "error":
+            st.error(alert["message"])
+        else:
+            st.warning(alert["message"])
+
+
 render_sidebar(features, orders, run_analysis)
+
+render_watch_alerts()
 
 maybe_show_onboarding(run_analysis)
 
