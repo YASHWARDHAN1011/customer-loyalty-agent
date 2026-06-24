@@ -10,6 +10,33 @@ This file has two jobs:
 
 ## 📓 Project Journal
 
+### 2026-06-23 — Proactive Analyst, Phase 6: Triggered Proactivity (Watches)
+Completed the roadmap: the agent now watches metrics you care about and speaks
+up only when a line you set is crossed.
+- **`src/agent/watches.py`** (NEW, pure / Streamlit-free): `WATCHABLE_METRICS`
+  (churn risk %, at-risk power users, power-user cutoff, largest segment gap —
+  each computes a deterministic value from an analysis snapshot dict via the
+  existing analysis funcs), `evaluate_watches(watches, snapshot)` (fires on
+  strict above/below; templated message; `error` severity for upward breaches
+  of churn/at-risk-power, else `warning`; an unavailable metric never fires),
+  and a best-effort JSON store at `.app_state/watches.json`
+  (`load_watches`/`add_watch`/`remove_watch`, like `memory.py`). Watches
+  persist across restart; no LLM in the path.
+- **`src/ui/sidebar.py`**: a "🔔 Watches" section — a form to add one (metric /
+  above-below / threshold) plus a list of current watches each with a delete
+  button.
+- **`app.py`**: `render_watch_alerts()` assembles a snapshot from
+  `session_state` and renders fired watches as `st.error`/`st.warning` banners
+  above the tabs, so an alert shows on whatever tab you're on. Guards on
+  analysis readiness; best-effort (never crashes).
+- Grounding unchanged: every number is deterministic; alert text is templated.
+- Tests: `tests/test_watches.py` (metric math, fire logic incl. strict
+  inequality + unavailable-metric, persistence round-trip + bad-input guards).
+  No network. Full suite green; app boots headless HTTP 200.
+- Scope: 4 metrics, structured-form input, banner surface — no NL parsing, no
+  background scheduling, no alert history, no new tab. Phase 6 completes the
+  Proactive Analyst roadmap.
+
 ### 2026-06-19 — Phase 5: Provider Abstraction (Gemini → Claude failover)
 Gemini daily-quota exhaustion is no longer a hard wall for text/reasoning calls.
 - **`src/config.py`**: loads `ANTHROPIC_API_KEY`, adds `CLAUDE_MODELS`
