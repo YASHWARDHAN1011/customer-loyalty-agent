@@ -15,7 +15,8 @@ import altair as alt
 
 # ── Brutalist palette — NAVY + CREAM + RED (shared with tab charts) ────────────
 
-INK       = "#FEF0D5"   # cream: borders, hard shadows, body text, chart axes
+INK       = "#FEF0D5"   # cream: borders, hard shadows, chart axes, structure
+TXT       = "#FFFFFF"   # bright white: readable body copy on dark surfaces
 ON_ACCENT = "#FEF0D5"   # cream: text/strokes that sit on the dark-red accent fills
 CREAM     = "#00263C"   # deep-navy inset boxes (legacy name kept for callers)
 PAPER     = "#0A3D5C"   # card / panel surfaces (lifted navy)
@@ -123,7 +124,7 @@ def render_intervention_card(t, gap_pct, ru_avg, pu_avg, mid, count):
                             box-shadow:2px 2px 0 {ON_ACCENT};
                         ">{gap_pct:.0f}% GAP</span>
                     </div>
-                    <p style="color:{INK}; opacity:0.55; margin:0; font-size:0.74rem; font-weight:600;
+                    <p style="color:{TXT}; opacity:0.85; margin:0; font-size:0.74rem; font-weight:600;
                               font-family:'Space Mono',monospace; letter-spacing:0.02em;">
                         {count:,} USERS &nbsp;//&nbsp; REG {ru_avg:.2f} &nbsp;//&nbsp; POW {pu_avg:.2f}
                     </p>
@@ -143,7 +144,7 @@ def render_intervention_card(t, gap_pct, ru_avg, pu_avg, mid, count):
                               font-weight:700; text-transform:uppercase; letter-spacing:0.12em;">
                         ▸ What the data shows
                     </p>
-                    <p style="color:{INK}; margin:0; font-size:0.86rem; line-height:1.5; font-weight:500;">
+                    <p style="color:{TXT}; margin:0; font-size:0.86rem; line-height:1.5; font-weight:500;">
                         {t['what'].format(ru=ru_avg, pu=pu_avg)}
                     </p>
                 </div>
@@ -153,7 +154,7 @@ def render_intervention_card(t, gap_pct, ru_avg, pu_avg, mid, count):
                               font-weight:700; text-transform:uppercase; letter-spacing:0.12em;">
                         ▸ Target segment
                     </p>
-                    <p style="color:{INK}; margin:0; font-size:0.86rem; line-height:1.5; font-weight:500;">
+                    <p style="color:{TXT}; margin:0; font-size:0.86rem; line-height:1.5; font-weight:500;">
                         {t['who'].format(mid=mid, count=count, ru=ru_avg, pu=pu_avg)}
                     </p>
                 </div>
@@ -163,7 +164,7 @@ def render_intervention_card(t, gap_pct, ru_avg, pu_avg, mid, count):
                               font-weight:700; text-transform:uppercase; letter-spacing:0.12em;">
                         ▸ Campaign action
                     </p>
-                    <p style="color:{INK}; margin:0; font-size:0.86rem; line-height:1.5; font-weight:500;">
+                    <p style="color:{TXT}; margin:0; font-size:0.86rem; line-height:1.5; font-weight:500;">
                         {t['action']}
                     </p>
                 </div>
@@ -173,11 +174,11 @@ def render_intervention_card(t, gap_pct, ru_avg, pu_avg, mid, count):
                               font-weight:700; text-transform:uppercase; letter-spacing:0.12em;">
                         ▸ Sample message
                     </p>
-                    <p style="color:{INK}; opacity:0.82; margin:0; font-size:0.82rem;
+                    <p style="color:{TXT}; opacity:0.92; margin:0; font-size:0.82rem;
                               font-style:italic; line-height:1.5;">
                         “{t['message']}”
                     </p>
-                    <p style="color:{INK}; opacity:0.45; margin:5px 0 0; font-size:0.72rem;
+                    <p style="color:{TXT}; opacity:0.7; margin:5px 0 0; font-size:0.72rem;
                               font-family:'Space Mono',monospace;">
                         {t['metric'].format(ru=ru_avg, pu=pu_avg)}
                     </p>
@@ -290,7 +291,9 @@ def apply_theme():
    DESIGN TOKENS — NEO-BRUTALIST POP (DARK)
 ══════════════════════════════════════════════════ */
 :root {
-  --ink:       #FEF0D5;   /* cream lines / shadows / text           */
+  --ink:       #FEF0D5;   /* cream lines / shadows / chart axes / structure */
+  --text:      #FFFFFF;   /* bright white — primary readable body copy */
+  --text-dim:  rgba(255,255,255,0.78);  /* secondary copy: still legible, never muddy */
   --on-accent: #FEF0D5;   /* cream text/strokes on the dark-red accents */
   --canvas:    #002F49;   /* app navy ground                        */
   --paper:     #0A3D5C;   /* card / panel surfaces (lifted navy)    */
@@ -358,7 +361,7 @@ html, body { background: var(--canvas) !important; }
    TYPOGRAPHY
 ══════════════════════════════════════════════════ */
 h1 {
-  color: var(--ink) !important;
+  color: var(--text) !important;
   font-family: var(--font) !important;
   font-size: 2rem !important;
   font-weight: 700 !important;
@@ -381,21 +384,21 @@ h2 {
   margin-bottom: 1rem !important;
 }
 h3 {
-  color: var(--ink) !important;
+  color: var(--text) !important;
   font-family: var(--font) !important;
   font-size: 1.05rem !important;
   font-weight: 700 !important;
   letter-spacing: -0.015em !important;
 }
 h4, h5, h6 {
-  color: var(--ink) !important;
+  color: var(--text) !important;
   font-family: var(--mono) !important;
   font-weight: 700 !important;
   text-transform: uppercase !important;
   letter-spacing: 0.04em !important;
 }
-p, li { color: var(--ink) !important; line-height: 1.65 !important; font-weight: 500 !important; }
-strong { color: var(--ink) !important; font-weight: 700 !important; }
+p, li { color: var(--text) !important; line-height: 1.65 !important; font-weight: 500 !important; }
+strong { color: #FFFFFF !important; font-weight: 700 !important; }
 
 code {
   background: var(--violet) !important;
@@ -490,8 +493,8 @@ code {
 }
 [data-testid="stMetricLabel"] > div,
 [data-testid="stMetric"] label {
-  color: var(--ink) !important;
-  opacity: 0.7 !important;
+  color: var(--text-dim) !important;
+  opacity: 1 !important;
   font-family: var(--mono) !important;
   font-size: 0.68rem !important;
   font-weight: 700 !important;
@@ -499,7 +502,7 @@ code {
   letter-spacing: 0.1em !important;
 }
 [data-testid="stMetricValue"] {
-  color: var(--ink) !important;
+  color: var(--text) !important;
   font-family: var(--font) !important;
   font-size: 2.1rem !important;
   font-weight: 700 !important;
@@ -582,7 +585,7 @@ code {
   background: var(--paper) !important;
   border: var(--bw2) solid var(--ink) !important;
   border-radius: 0 !important;
-  color: var(--ink) !important;
+  color: var(--text) !important;
   box-shadow: var(--sh-sm) !important;
   font-weight: 600 !important;
 }
@@ -599,7 +602,7 @@ code {
   box-shadow: var(--sh) !important;
 }
 [data-baseweb="menu"]   { background: var(--paper) !important; }
-[role="option"]         { color: var(--ink) !important; font-weight:600 !important; }
+[role="option"]         { color: var(--text) !important; font-weight:600 !important; }
 [role="option"]:hover   { background: var(--violet) !important; color: var(--on-accent) !important; }
 
 /* Sliders — square red thumb */
@@ -635,9 +638,16 @@ code {
   border-color: var(--red) !important;
 }
 [data-testid="stChatInput"] textarea {
-  color: var(--ink) !important;
+  color: var(--text) !important;
   background: transparent !important;
   font-weight: 500 !important;
+}
+[data-testid="stChatInput"] textarea::placeholder {
+  color: rgba(255,255,255,0.5) !important;
+}
+/* Text / number inputs — bright legible value text */
+input, textarea, .stTextInput input, .stNumberInput input {
+  color: var(--text) !important;
 }
 
 /* ══════════════════════════════════════════════════
@@ -662,7 +672,7 @@ code {
   box-shadow: var(--sh-sm) !important;
 }
 .stExpander summary {
-  color: var(--ink) !important;
+  color: var(--text) !important;
   font-family: var(--font) !important;
   font-weight: 700 !important;
   font-size: 0.9rem !important;
@@ -692,8 +702,8 @@ hr {
    CAPTION & SMALL TEXT
 ══════════════════════════════════════════════════ */
 .stCaption, [data-testid="stCaptionContainer"] p {
-  color: var(--ink) !important;
-  opacity: 0.6 !important;
+  color: var(--text-dim) !important;
+  opacity: 1 !important;
   font-family: var(--mono) !important;
   font-size: 0.74rem !important;
   line-height: 1.6 !important;
@@ -720,11 +730,11 @@ hr {
   border: var(--bw2) solid var(--ink) !important;
   border-radius: 0 !important;
   box-shadow: var(--sh-sm) !important;
-  color: var(--ink) !important;
+  color: var(--text) !important;
   font-weight: 600 !important;
   font-size: 0.87rem !important;
 }
-[data-testid="stAlert"] * { color: var(--ink) !important; }
+[data-testid="stAlert"] * { color: var(--text) !important; }
 [data-testid="stNotification"], [data-testid="stStatusWidget"] { border-radius: 0 !important; }
 [data-testid="stStatus"] {
   background: var(--paper) !important;

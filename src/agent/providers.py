@@ -9,6 +9,11 @@ fail over. Grounding is unaffected — providers only narrate.
 """
 
 import google.generativeai as genai
+from google.api_core import retry as garetry
+
+# Fail fast on quota/429 instead of the SDK's long backoff retry (see caller.py).
+_FAST_FAIL = {"retry": garetry.Retry(predicate=lambda exc: False, deadline=20),
+              "timeout": 20}
 
 
 def gemini_generate_text(prompt, *, system_instruction, key, model):
@@ -16,7 +21,7 @@ def gemini_generate_text(prompt, *, system_instruction, key, model):
     genai.configure(api_key=key)
     m = genai.GenerativeModel(model_name=model,
                               system_instruction=system_instruction)
-    response = m.generate_content(prompt)
+    response = m.generate_content(prompt, request_options=_FAST_FAIL)
     return response.text
 
 

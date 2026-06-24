@@ -9,12 +9,20 @@ Gemini conversation history and automatic function calling.
 import streamlit as st
 import google.generativeai as genai
 from google.api_core import exceptions as google_exceptions
+from google.api_core import retry as garetry
 
 from src.config import LLM_ARSENAL, API_KEYS, SYSTEM_PROMPT
 from src.agent.tools import ALL_TOOLS
 from src.agent.providers import (
     gemini_generate_text, claude_generate_text, is_eligible, provider_text,
 )
+
+# Fail fast: never sit in the SDK's exponential-backoff retry loop on a 429 /
+# quota error. Without this, an exhausted key blocks for many seconds before
+# raising, so rotating all combos can hang the chat for minutes. We'd rather
+# fall through to the next combo (or the "all exhausted" message) immediately.
+FAST_FAIL = {"retry": garetry.Retry(predicate=lambda exc: False, deadline=20),
+             "timeout": 20}
 
 
 def generate(
@@ -72,7 +80,7 @@ def generate(
                     history=history or [],
                     enable_automatic_function_calling=automatic_function_calling,
                 )
-                response = chat.send_message(prompt)
+                response = chat.send_message(prompt, request_options=FAST_FAIL)
                 st.session_state['active_model'] = combo['label']
                 return {"text": response.text, "model_label": combo['label'],
                         "chat": chat}
