@@ -11,8 +11,8 @@ from io import StringIO
 
 import pandas as pd
 
-# BOM-less fallbacks tried in order; latin-1 decodes any byte as a last resort.
-_ENCODINGS = ["utf-8", "utf-16", "latin-1"]
+# UTF-16 is handled by BOM detection above; latin-1 is the last-resort fallback.
+_ENCODINGS = ["utf-8"]
 
 
 def sniff_encoding(raw: bytes) -> str:
@@ -27,7 +27,7 @@ def sniff_encoding(raw: bytes) -> str:
             return enc
         except UnicodeDecodeError:
             continue
-    return "latin-1"
+    return "latin-1"   # always decodes any byte sequence; last-resort fallback
 
 
 def sniff_delimiter(sample: str) -> str:
@@ -38,7 +38,7 @@ def sniff_delimiter(sample: str) -> str:
         return ","
 
 
-def read_table(path, sheet=0) -> pd.DataFrame:
+def read_table(path: str, sheet: int = 0) -> pd.DataFrame:
     """Read a CSV or Excel file at `path` into an all-string DataFrame."""
     lower = str(path).lower()
     if lower.endswith((".xlsx", ".xls")):

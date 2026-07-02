@@ -36,9 +36,13 @@ def test_reader_semicolon_and_utf16(tmpdir):
     check("utf-16 decoded", df["amt"].iloc[0] == "9,50")
 
 
-if __name__ == "__main__":
+def main():
     import tempfile
     with tempfile.TemporaryDirectory() as d:
         test_reader_csv_comma(d)
         test_reader_semicolon_and_utf16(d)
     print(f"\n{_passed} checks passed.")
+
+
+if __name__ == "__main__":
+    main()
