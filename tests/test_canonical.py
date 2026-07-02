@@ -118,11 +118,39 @@ def test_optional_features_partial_columns():
           fm.is_available("reorder_rate") is True)
 
 
+def test_build_feature_matrix_orders_only():
+    from src.data.canonical import build_feature_matrix
+    fm = build_feature_matrix(_orders_fixture())
+    check("orders-only rows == customers", len(fm.frame) == 2)
+    check("orders-only has all core cols",
+          all(c in fm.frame.columns for c in CORE_FEATURES))
+    check("orders-only optional unavailable",
+          all(not fm.is_available(f) for f in OPTIONAL_FEATURES))
+    check("orders-only available_features == core",
+          set(fm.available_features()) == set(CORE_FEATURES))
+
+
+def test_build_feature_matrix_full():
+    from src.data.canonical import build_feature_matrix
+    fm = build_feature_matrix(_orders_fixture(), _items_fixture())
+    check("full rows == customers", len(fm.frame) == 2)
+    check("full has core + optional cols",
+          all(c in fm.frame.columns for c in CORE_FEATURES + OPTIONAL_FEATURES))
+    check("full everything available",
+          set(fm.available_features()) == set(CORE_FEATURES + OPTIONAL_FEATURES))
+    check("no duplicate customers", fm.frame["customer_id"].is_unique)
+    row1 = fm.frame.set_index("customer_id").loc[1]
+    check("merged core value intact", row1["monetary"] == 60.0)
+    check("merged optional value intact", row1["category_diversity"] == 2)
+
+
 def main():
     test_feature_matrix_container()
     test_core_features()
     test_optional_features_full()
     test_optional_features_partial_columns()
+    test_build_feature_matrix_orders_only()
+    test_build_feature_matrix_full()
     print(f"\n{_passed} checks passed.")
 
 

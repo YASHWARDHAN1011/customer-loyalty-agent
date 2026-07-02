@@ -143,3 +143,30 @@ def build_optional_features(orders: pd.DataFrame,
     feats = feats.reset_index()
 
     return FeatureMatrix(frame=feats, available=available)
+
+
+def build_feature_matrix(orders: pd.DataFrame,
+                         order_items: pd.DataFrame = None) -> FeatureMatrix:
+    """Public entry point: assemble the full canonical feature matrix.
+
+    With `orders` alone, returns the RFM-core matrix (optional features tagged
+    unavailable). With `order_items` too, merges the optional extensions on and
+    tags them per their column availability. Always one row per customer.
+    """
+    core = build_core_features(orders)
+    if order_items is None or len(order_items) == 0:
+        return core
+
+    opt = build_optional_features(orders, order_items)
+    opt_cols = [c for c in opt.frame.columns if c != "customer_id"]
+
+    merged = core.frame.merge(
+        opt.frame[["customer_id"] + opt_cols], on="customer_id", how="left")
+
+    available = dict(core.available)
+    available.update({f: opt.available.get(f, False) for f in OPTIONAL_FEATURES})
+
+    present_opt = [c for c in OPTIONAL_FEATURES if c in merged.columns]
+    merged[present_opt] = merged[present_opt].fillna(0).round(4)
+
+    return FeatureMatrix(frame=merged, available=available)
