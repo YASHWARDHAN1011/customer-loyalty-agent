@@ -98,3 +98,48 @@ def build_core_features(orders: pd.DataFrame) -> FeatureMatrix:
     available = {f: True for f in CORE_FEATURES}
     available.update({f: False for f in OPTIONAL_FEATURES})
     return FeatureMatrix(frame=feats, available=available)
+
+
+def build_optional_features(orders: pd.DataFrame,
+                            order_items: pd.DataFrame) -> FeatureMatrix:
+    """Compute optional extension features from `order_items`.
+
+    Each optional feature is tagged available ONLY when its required column is
+    present; an absent column means the feature is neither computed nor tagged
+    available. `order_items` is joined to `orders` to attribute lines to a
+    customer. `quantity` defaults to 1 per line when absent.
+    """
+    items = order_items.copy()
+    if "quantity" not in items.columns:
+        items["quantity"] = 1
+
+    line = items.merge(
+        orders[["order_id", "customer_id"]], on="order_id", how="left")
+
+    customers = orders["customer_id"].drop_duplicates()
+    feats = pd.DataFrame({"customer_id": customers}).set_index("customer_id")
+
+    available = {f: False for f in OPTIONAL_FEATURES}
+    available.update({f: True for f in CORE_FEATURES})
+
+    grp = line.groupby("customer_id")
+
+    if "category" in line.columns:
+        feats["category_diversity"] = grp["category"].nunique()
+        available["category_diversity"] = True
+
+    lines_per_order = line.groupby(["customer_id", "order_id"]).size()
+    feats["avg_basket_size"] = lines_per_order.groupby("customer_id").mean()
+    available["avg_basket_size"] = True
+
+    if "product" in line.columns:
+        total_lines = grp.size()
+        distinct = grp["product"].nunique()
+        feats["reorder_rate"] = (1 - (distinct / total_lines))
+        available["reorder_rate"] = True
+
+    present = [f for f in OPTIONAL_FEATURES if f in feats.columns]
+    feats[present] = feats[present].fillna(0).round(4)
+    feats = feats.reset_index()
+
+    return FeatureMatrix(frame=feats, available=available)

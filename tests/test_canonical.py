@@ -74,9 +74,55 @@ def test_core_features():
           all(not fm.is_available(f) for f in OPTIONAL_FEATURES))
 
 
+def _items_fixture():
+    """order_items for the orders fixture. Customer 1 (orders 101/102/103),
+    Customer 2 (order 201). Two categories for c1; c1 reorders 'milk'.
+    """
+    return pd.DataFrame({
+        "order_id": [101, 101, 102, 103, 201],
+        "product":  ["milk", "eggs", "milk", "bread", "soda"],
+        "category": ["dairy", "dairy", "dairy", "bakery", "drinks"],
+        "quantity": [1, 2, 1, 1, 3],
+    })
+
+
+def test_optional_features_full():
+    from src.data.canonical import build_optional_features
+    fm = build_optional_features(_orders_fixture(), _items_fixture())
+    row1 = fm.frame.set_index("customer_id").loc[1]
+    row2 = fm.frame.set_index("customer_id").loc[2]
+
+    check("category_diversity c1", row1["category_diversity"] == 2)
+    check("category_diversity c2", row2["category_diversity"] == 1)
+    check("avg_basket_size c1", round(row1["avg_basket_size"], 4) == 1.3333)
+    check("avg_basket_size c2", row2["avg_basket_size"] == 1.0)
+    check("reorder_rate c1", row1["reorder_rate"] == 0.25)
+    check("reorder_rate c2 no repeats", row2["reorder_rate"] == 0.0)
+
+    check("optional all available",
+          all(fm.is_available(f) for f in OPTIONAL_FEATURES))
+
+
+def test_optional_features_partial_columns():
+    """order_items with no `category` -> category_diversity unavailable, others OK."""
+    from src.data.canonical import build_optional_features
+    items = _items_fixture().drop(columns=["category"])
+    fm = build_optional_features(_orders_fixture(), items)
+    check("category_diversity unavailable when no category column",
+          fm.is_available("category_diversity") is False)
+    check("category_diversity column absent from frame",
+          "category_diversity" not in fm.frame.columns)
+    check("avg_basket_size still available",
+          fm.is_available("avg_basket_size") is True)
+    check("reorder_rate still available",
+          fm.is_available("reorder_rate") is True)
+
+
 def main():
     test_feature_matrix_container()
     test_core_features()
+    test_optional_features_full()
+    test_optional_features_partial_columns()
     print(f"\n{_passed} checks passed.")
 
 
