@@ -10,6 +10,31 @@ This file has two jobs:
 
 ## 📓 Project Journal
 
+### 2026-07-02 — Intelligence Layer, Phase 1: Canonical data model
+Added the one internal data shape every surface will read from (spec:
+docs/superpowers/specs/2026-06-26-intelligence-layer-byod-design.md; plan:
+docs/superpowers/plans/2026-07-02-canonical-foundation.md).
+- **`src/data/canonical.py`** (NEW, pure / Streamlit-free): canonical `orders`
+  + `order_items` contracts; `FeatureMatrix` (per-customer frame + per-feature
+  `available` map with `is_available` / `available_features`); `build_core_features`
+  (RFM core from orders alone — recency/frequency/monetary/AOV/tenure/avg-gap,
+  all always available; avg-gap vectorized as span/(n-1) for 200k-customer scale),
+  `build_optional_features` (category_diversity/avg_basket_size/reorder_rate, each
+  tagged available only when its column exists; items merge dedups order_id to
+  prevent basket fan-out), and `build_feature_matrix(orders, order_items=None)`
+  merging both.
+- Availability tagging is the "never malfunctions" mechanism: orders-only input
+  tags all optional features unavailable; downstream phases degrade on the tag,
+  never on a raw column name. Module assumes ALREADY-VALIDATED input (the
+  ingestion-validator firewall is a later phase).
+- Tests: `tests/test_canonical.py` — the trust contract (feature math on a
+  hand-computable fixture + availability across orders-only / full / partial /
+  edge / duplicate-order_id inputs; 52 checks). No network. Existing suites
+  (scoring, simulation) still green.
+- Scope: model + builder + tests only. App still runs the old Instacart path;
+  demo adapter / ingestion / re-anchoring / degradation / persistence are the
+  next phases (Phases 2-6).
+
 ### 2026-06-23 — Proactive Analyst, Phase 6: Triggered Proactivity (Watches)
 Completed the roadmap: the agent now watches metrics you care about and speaks
 up only when a line you set is crossed.
