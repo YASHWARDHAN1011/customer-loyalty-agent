@@ -144,6 +144,46 @@ def test_build_feature_matrix_full():
     check("merged optional value intact", row1["category_diversity"] == 2)
 
 
+def test_edge_single_customer_single_order():
+    from src.data.canonical import build_feature_matrix
+    one = pd.DataFrame({
+        "customer_id": [7], "order_id": [1],
+        "order_date": pd.to_datetime(["2024-05-01"]),
+        "order_amount": [42.0],
+    })
+    fm = build_feature_matrix(one)
+    row = fm.frame.set_index("customer_id").loc[7]
+    check("single: recency 0", row["recency_days"] == 0)
+    check("single: frequency 1", row["frequency"] == 1)
+    check("single: gap 0 (no diff)", row["avg_days_between_orders"] == 0.0)
+    check("single: aov == monetary", row["avg_order_value"] == 42.0)
+
+
+def test_edge_empty_items_table():
+    from src.data.canonical import build_feature_matrix
+    empty_items = pd.DataFrame(columns=["order_id", "product",
+                                        "category", "quantity"])
+    fm = build_feature_matrix(_orders_fixture(), empty_items)
+    check("empty items -> optional unavailable",
+          all(not fm.is_available(f) for f in OPTIONAL_FEATURES))
+    check("empty items -> core still available",
+          all(fm.is_available(f) for f in CORE_FEATURES))
+
+
+def test_edge_customer_with_no_items():
+    """Customer 2 has an order but NO item lines -> optional cols are 0, not NaN."""
+    from src.data.canonical import build_feature_matrix
+    items_c1_only = _items_fixture()[_items_fixture()["order_id"] != 201]
+    fm = build_feature_matrix(_orders_fixture(), items_c1_only)
+    row2 = fm.frame.set_index("customer_id").loc[2]
+    check("no-item customer basket 0", row2["avg_basket_size"] == 0.0)
+    check("no-item customer category_diversity 0",
+          row2["category_diversity"] == 0.0)
+    check("no NaNs in optional cols",
+          not fm.frame[["avg_basket_size", "category_diversity",
+                        "reorder_rate"]].isna().any().any())
+
+
 def main():
     test_feature_matrix_container()
     test_core_features()
@@ -151,6 +191,9 @@ def main():
     test_optional_features_partial_columns()
     test_build_feature_matrix_orders_only()
     test_build_feature_matrix_full()
+    test_edge_single_customer_single_order()
+    test_edge_empty_items_table()
+    test_edge_customer_with_no_items()
     print(f"\n{_passed} checks passed.")
 
 
