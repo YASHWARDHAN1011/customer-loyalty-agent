@@ -58,3 +58,43 @@ class FeatureMatrix:
     def available_features(self) -> list:
         return [f for f in self.frame.columns
                 if f != "customer_id" and self.is_available(f)]
+
+
+def build_core_features(orders: pd.DataFrame) -> FeatureMatrix:
+    """Compute the RFM-core feature matrix from the canonical `orders` table.
+
+    All six CORE_FEATURES are always computable, so all are tagged available.
+    Recency/tenure are measured against `as_of` = the latest order_date in the
+    dataset (a fixed reference so scores are comparable across customers).
+    """
+    df = orders.copy()
+    df["order_date"] = pd.to_datetime(df["order_date"])
+    as_of = df["order_date"].max()
+
+    grp = df.groupby("customer_id")
+    last_order = grp["order_date"].max()
+    first_order = grp["order_date"].min()
+
+    feats = pd.DataFrame({"customer_id": grp.size().index})
+    feats = feats.set_index("customer_id")
+
+    feats["recency_days"] = (as_of - last_order).dt.days
+    feats["frequency"] = grp["order_id"].nunique()
+    feats["monetary"] = grp["order_amount"].sum()
+    feats["avg_order_value"] = (feats["monetary"] / feats["frequency"])
+    feats["tenure_days"] = (as_of - first_order).dt.days
+
+    def _mean_gap(dates):
+        s = dates.sort_values()
+        if len(s) < 2:
+            return 0.0
+        return float(s.diff().dropna().dt.days.mean())
+
+    feats["avg_days_between_orders"] = grp["order_date"].apply(_mean_gap)
+
+    feats = feats.reset_index()
+    feats[CORE_FEATURES] = feats[CORE_FEATURES].fillna(0).round(4)
+
+    available = {f: True for f in CORE_FEATURES}
+    available.update({f: False for f in OPTIONAL_FEATURES})
+    return FeatureMatrix(frame=feats, available=available)

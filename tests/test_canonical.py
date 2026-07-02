@@ -36,8 +36,47 @@ def test_feature_matrix_container():
           {"category_diversity", "avg_basket_size", "reorder_rate"})
 
 
+def _orders_fixture():
+    """Two customers, hand-computable. as_of (max date) = 2024-01-20.
+    Customer 1: 3 orders on Jan 1, Jan 11, Jan 20; amounts 10, 20, 30.
+    Customer 2: 1 order on Jan 10; amount 100.
+    """
+    return pd.DataFrame({
+        "customer_id": [1, 1, 1, 2],
+        "order_id":    [101, 102, 103, 201],
+        "order_date":  pd.to_datetime(
+            ["2024-01-01", "2024-01-11", "2024-01-20", "2024-01-10"]),
+        "order_amount": [10.0, 20.0, 30.0, 100.0],
+    })
+
+
+def test_core_features():
+    from src.data.canonical import build_core_features
+    fm = build_core_features(_orders_fixture())
+    row1 = fm.frame.set_index("customer_id").loc[1]
+    row2 = fm.frame.set_index("customer_id").loc[2]
+
+    check("recency c1", row1["recency_days"] == 0)
+    check("recency c2", row2["recency_days"] == 10)
+    check("frequency c1", row1["frequency"] == 3)
+    check("frequency c2", row2["frequency"] == 1)
+    check("monetary c1", row1["monetary"] == 60.0)
+    check("monetary c2", row2["monetary"] == 100.0)
+    check("aov c1", row1["avg_order_value"] == 20.0)
+    check("aov c2", row2["avg_order_value"] == 100.0)
+    check("tenure c1", row1["tenure_days"] == 19)
+    check("tenure c2", row2["tenure_days"] == 10)
+    check("gap c1", row1["avg_days_between_orders"] == 9.5)
+    check("gap c2 single order -> 0", row2["avg_days_between_orders"] == 0.0)
+
+    check("core all available", all(fm.is_available(f) for f in CORE_FEATURES))
+    check("optional all unavailable",
+          all(not fm.is_available(f) for f in OPTIONAL_FEATURES))
+
+
 def main():
     test_feature_matrix_container()
+    test_core_features()
     print(f"\n{_passed} checks passed.")
 
 
