@@ -184,6 +184,27 @@ def test_edge_customer_with_no_items():
                         "reorder_rate"]].isna().any().any())
 
 
+def test_edge_duplicate_order_id_no_fanout():
+    """A duplicated order_id in `orders` must NOT fan out item lines."""
+    from src.data.canonical import build_feature_matrix
+    orders = pd.DataFrame({
+        "customer_id": [1, 1],
+        "order_id":    [101, 101],          # duplicated on purpose
+        "order_date":  pd.to_datetime(["2024-01-01", "2024-01-01"]),
+        "order_amount": [10.0, 10.0],
+    })
+    items = pd.DataFrame({
+        "order_id": [101, 101],
+        "product":  ["milk", "eggs"],
+        "category": ["dairy", "dairy"],
+        "quantity": [1, 1],
+    })
+    fm = build_feature_matrix(orders, items)
+    row1 = fm.frame.set_index("customer_id").loc[1]
+    # 2 item lines in one order -> basket size 2, NOT 4 (no fan-out)
+    check("dup order_id no basket fan-out", row1["avg_basket_size"] == 2.0)
+
+
 def main():
     test_feature_matrix_container()
     test_core_features()
@@ -194,6 +215,7 @@ def main():
     test_edge_single_customer_single_order()
     test_edge_empty_items_table()
     test_edge_customer_with_no_items()
+    test_edge_duplicate_order_id_no_fanout()
     print(f"\n{_passed} checks passed.")
 
 

@@ -66,6 +66,10 @@ def build_core_features(orders: pd.DataFrame) -> FeatureMatrix:
     All six CORE_FEATURES are always computable, so all are tagged available.
     Recency/tenure are measured against `as_of` = the latest order_date in the
     dataset (a fixed reference so scores are comparable across customers).
+
+    Assumes validated input: order_amount non-null & numeric, customer_id
+    non-null (a later ingestion-validator phase guarantees this). NaN keys
+    would be dropped by groupby and NaN amounts skipped in the monetary sum.
     """
     df = orders.copy()
     df["order_date"] = pd.to_datetime(df["order_date"])
@@ -84,13 +88,13 @@ def build_core_features(orders: pd.DataFrame) -> FeatureMatrix:
     feats["avg_order_value"] = (feats["monetary"] / feats["frequency"])
     feats["tenure_days"] = (as_of - first_order).dt.days
 
-    def _mean_gap(dates):
-        s = dates.sort_values()
-        if len(s) < 2:
-            return 0.0
-        return float(s.diff().dropna().dt.days.mean())
-
-    feats["avg_days_between_orders"] = grp["order_date"].apply(_mean_gap)
+    # Mean gap between consecutive orders = total span / (order count - 1).
+    # Vectorized (the per-group apply was ~70s at 200k customers). Single-order
+    # customers have no gap -> 0.0 (recency is the primary churn signal; this
+    # avg-gap is a documented secondary).
+    span_days = (last_order - first_order).dt.days
+    freq = feats["frequency"]
+    feats["avg_days_between_orders"] = (span_days / (freq - 1)).where(freq > 1, 0.0)
 
     feats = feats.reset_index()
     feats[CORE_FEATURES] = feats[CORE_FEATURES].fillna(0).round(4)
@@ -113,14 +117,16 @@ def build_optional_features(orders: pd.DataFrame,
     if "quantity" not in items.columns:
         items["quantity"] = 1
 
+    # drop_duplicates guards against a duplicated order_id in `orders` fanning
+    # out item lines (which would inflate avg_basket_size / skew reorder_rate).
     line = items.merge(
-        orders[["order_id", "customer_id"]], on="order_id", how="left")
+        orders[["order_id", "customer_id"]].drop_duplicates("order_id"),
+        on="order_id", how="left")
 
     customers = orders["customer_id"].drop_duplicates()
     feats = pd.DataFrame({"customer_id": customers}).set_index("customer_id")
 
     available = {f: False for f in OPTIONAL_FEATURES}
-    available.update({f: True for f in CORE_FEATURES})
 
     grp = line.groupby("customer_id")
 
