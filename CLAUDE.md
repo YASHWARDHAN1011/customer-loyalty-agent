@@ -10,6 +10,26 @@ This file has two jobs:
 
 ## 📓 Project Journal
 
+### 2026-07-02 — Intelligence Layer, Phase 2: Instacart demo adapter
+Instacart now flows into the canonical shape through the same pipe a client
+upload will (spec §6; plan: docs/superpowers/plans/2026-07-02-demo-adapter.md).
+- **`src/data/demo/instacart.py`** (NEW, pure / Streamlit-free): `reconstruct_order_dates`
+  (cumulative-sum days_since_prior_order from a fixed anchor), `assign_synthetic_prices`
+  (deterministic per-product prices — Instacart has no money; REVENUE_IS_SYNTHETIC
+  flag), `build_canonical_orders` (prior-only, synthetic order_amount),
+  `build_canonical_order_items` (product/category lines, quantity 1), `to_canonical`
+  orchestrator, and `load_demo_canonical(data_dir)` reading the 4 CSVs -> canonical
+  tables + a Phase 1 FeatureMatrix.
+- The demo is the RICH dataset: end-to-end it produces a Full FeatureMatrix
+  (all core + optional features available), verified against hand-computed values.
+- Scope (narrow): adapter + tests only. app.py untouched, parquet artifacts NOT
+  rebuilt — get_app_data() still the live path. App wiring + canonical artifact
+  rebuild is a later integration step.
+- Tests: `tests/test_demo_adapter.py` — date reconstruction, price determinism,
+  canonical tables, end-to-end composition through build_feature_matrix, and a
+  CSV round-trip via load_demo_canonical (temp-dir fixtures, no 690MB read).
+  No network. Existing suites (canonical 52, scoring, simulation) still green.
+
 ### 2026-07-02 — Intelligence Layer, Phase 1: Canonical data model
 Added the one internal data shape every surface will read from (spec:
 docs/superpowers/specs/2026-06-26-intelligence-layer-byod-design.md; plan:
