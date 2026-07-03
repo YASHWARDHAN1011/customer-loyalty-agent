@@ -93,6 +93,38 @@ def test_fuzzy_map_global_best():
     check("quantity mapped to qty", m["quantity"] == "Qty")
 
 
+def test_propose_mapping_llm():
+    from src.data.ingest.mapper import propose_mapping
+    profile = [{"name": "Cust Ref", "guessed_kind": "text", "samples": ["1"],
+                "pct_null": 0.0, "pct_unique": 90.0}]
+
+    def fake_gen(prompt):
+        check("prompt carries header", "Cust Ref" in prompt)
+        check("prompt has no raw-row dump", "SELECT" not in prompt)
+        return '{"customer_id": "Cust Ref", "order_id": "Ghost Col"}'
+
+    res = propose_mapping(profile, generate_fn=fake_gen)
+    check("llm source", res["source"] == "llm")
+    check("valid header kept", res["mapping"]["customer_id"] == "Cust Ref")
+    check("hallucinated header dropped", res["mapping"].get("order_id") is None)
+
+
+def test_propose_mapping_fallback():
+    from src.data.ingest.mapper import propose_mapping
+    profile = [{"name": "Customer Ref"}, {"name": "Order No"},
+               {"name": "Order Date"}, {"name": "Total"}]
+
+    def broken_gen(prompt):
+        raise RuntimeError("all keys exhausted")
+
+    res = propose_mapping(profile, generate_fn=broken_gen)
+    check("falls back to fuzzy", res["source"] == "fuzzy")
+    check("fuzzy still maps required", res["mapping"]["customer_id"] == "Customer Ref")
+
+    res2 = propose_mapping(profile, generate_fn=None)
+    check("no generate_fn -> fuzzy", res2["source"] == "fuzzy")
+
+
 def main():
     import tempfile
     with tempfile.TemporaryDirectory() as d:
@@ -102,6 +134,8 @@ def main():
     test_fuzzy_map()
     test_fuzzy_map_no_match()
     test_fuzzy_map_global_best()
+    test_propose_mapping_llm()
+    test_propose_mapping_fallback()
     print(f"\n{_passed} checks passed.")
 
 

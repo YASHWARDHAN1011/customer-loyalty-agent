@@ -95,3 +95,52 @@ def fuzzy_map(profile: list) -> dict:
         assigned_fields.add(field)
         used_headers.add(header)
     return mapping
+
+
+def _build_prompt(profile: list) -> str:
+    """Render the column profile (never raw rows) into a mapping request."""
+    lines = ["You map a client's spreadsheet columns onto a fixed schema.",
+             "Canonical fields (map each to ONE source column name, or omit it):",
+             "  required: customer_id, order_id, order_date, order_amount",
+             "  optional: product, category, quantity",
+             "",
+             "Source columns (name | kind | %null | %unique | samples):"]
+    for p in profile:
+        lines.append(
+            f"  {p['name']} | {p.get('guessed_kind', '?')} | "
+            f"{p.get('pct_null', '?')}% null | {p.get('pct_unique', '?')}% unique "
+            f"| {p.get('samples', [])}")
+    lines += ["",
+              "Reply with ONLY a JSON object mapping canonical field -> source "
+              "column name. Use exact source names. Omit fields with no match."]
+    return "\n".join(lines)
+
+
+def _parse_llm_mapping(raw: str, headers: list) -> dict:
+    """Extract the JSON object and keep only real fields mapped to real headers."""
+    start, end = raw.find("{"), raw.rfind("}")
+    if start == -1 or end == -1:
+        raise ValueError("no JSON object in LLM reply")
+    obj = json.loads(raw[start:end + 1])
+    header_set = set(headers)
+    mapping = {f: None for f in CANONICAL_FIELDS}
+    for field, col in obj.items():
+        if field in CANONICAL_FIELDS and col in header_set:
+            mapping[field] = col
+    return mapping
+
+
+def propose_mapping(profile: list, generate_fn=None) -> dict:
+    """Propose a mapping. Returns {'mapping', 'source'} where source is 'llm' or
+    'fuzzy'. Tries the injected `generate_fn(prompt)->str` first; on ANY failure
+    (no fn, exception, unparseable/empty result) falls back to `fuzzy_map`."""
+    headers = [p["name"] for p in profile]
+    if generate_fn is not None:
+        try:
+            mapping = _parse_llm_mapping(generate_fn(_build_prompt(profile)), headers)
+            if any(mapping.get(f) for f in CANONICAL_FIELDS
+                   if CANONICAL_FIELDS[f]["required"]):
+                return {"mapping": mapping, "source": "llm"}
+        except Exception:
+            pass
+    return {"mapping": fuzzy_map(profile), "source": "fuzzy"}
