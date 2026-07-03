@@ -19,7 +19,9 @@ def _guess_kind(series: pd.Series) -> str:
     vals = series[~_blank(series)].astype(str)
     if len(vals) == 0:
         return "empty"
-    sample = vals.head(50)
+    # Random (deterministic) sample, not head(): client files are often
+    # date-sorted, so the first rows can be unrepresentative of the column.
+    sample = vals.sample(min(50, len(vals)), random_state=0)
     numeric = pd.to_numeric(
         sample.str.replace(r"[$,]", "", regex=True), errors="coerce")
     if numeric.notna().mean() > 0.9:
@@ -37,12 +39,13 @@ def profile_columns(df: pd.DataFrame) -> list:
     for col in df.columns:
         s = df[col]
         blank = _blank(s)
+        non_blank_count = int((~blank).sum())
         out.append({
             "name": str(col),
             "guessed_kind": _guess_kind(s),
             "samples": s[~blank].astype(str).head(5).tolist(),
             "pct_null": round(float(blank.mean()) * 100, 1) if n else 0.0,
-            "pct_unique": (round(float(s[~blank].nunique()) / n * 100, 1)
-                           if n else 0.0),
+            "pct_unique": (round(float(s[~blank].nunique()) / non_blank_count * 100, 1)
+                           if non_blank_count else 0.0),
         })
     return out
