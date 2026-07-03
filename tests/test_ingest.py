@@ -289,6 +289,20 @@ def test_build_canonical_rejects_bad():
     check("no matrix on failure", res["matrix"] is None)
 
 
+def test_build_canonical_line_grained_warns():
+    # Same order_id with two different amounts (a line-grained file): builder
+    # must still succeed but WARN that revenue may be under-counted.
+    from src.data.ingest.builder import build_canonical
+    df = pd.DataFrame({
+        "cust": ["1", "1"], "ord": ["100", "100"],
+        "when": ["2024-01-02", "2024-01-02"], "amt": ["12.50", "8.00"]})
+    res = build_canonical(df, _GOOD_MAP)
+    check("line-grained still ok", res["ok"] is True)
+    check("line-grained warns about differing amounts",
+          any("more than one distinct amount" in w for w in res["warnings"]))
+    check("still deduped to one order", len(res["orders"]) == 1)
+
+
 def main():
     import tempfile
     with tempfile.TemporaryDirectory() as d:
@@ -314,6 +328,7 @@ def main():
     test_build_canonical_orders_only()
     test_build_canonical_dedups_orders()
     test_build_canonical_rejects_bad()
+    test_build_canonical_line_grained_warns()
     print(f"\n{_passed} checks passed.")
 
 

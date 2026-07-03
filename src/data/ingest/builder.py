@@ -25,7 +25,23 @@ def build_canonical(df, mapping) -> dict:
 
     from src.data.canonical import build_feature_matrix
 
+    # Detect a likely line-grained file (same order_id with more than one
+    # distinct amount) before dedup, so a silent revenue under-count surfaces
+    # as a warning the operator can act on. Copy warnings so we never mutate
+    # the ValidationResult's list.
+    warnings = list(result.warnings)
+    amt_per_order = result.orders.groupby("order_id")["order_amount"].nunique()
+    ambiguous = int((amt_per_order > 1).sum())
+    if ambiguous:
+        warnings.append(
+            f"{ambiguous} order id(s) appear with more than one distinct amount. "
+            "This file may be line-grained (amount per line, not per order); the "
+            "first amount per order id is used, so revenue totals may be off. "
+            "Verify the amount column mapping.")
+
     orders = result.orders.drop_duplicates("order_id").reset_index(drop=True)
+    # build_feature_matrix is exception-safe on validated input (amounts numeric,
+    # dates parsed, ids non-null, orders non-empty after dedup).
     matrix = build_feature_matrix(orders, result.order_items)
-    return {"ok": True, "errors": [], "warnings": result.warnings,
+    return {"ok": True, "errors": [], "warnings": warnings,
             "orders": orders, "order_items": result.order_items, "matrix": matrix}
