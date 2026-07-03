@@ -54,12 +54,37 @@ def test_profiler():
     check("samples are strings", all(isinstance(s, str) for s in by["Note"]["samples"]))
 
 
+def test_fuzzy_map():
+    from src.data.ingest.mapper import fuzzy_map
+    profile = [
+        {"name": "Customer Ref"}, {"name": "Order No"},
+        {"name": "Order Date"}, {"name": "Total (AUD)"},
+        {"name": "Product Name"}, {"name": "Dept"},
+    ]
+    m = fuzzy_map(profile)
+    check("customer_id mapped", m["customer_id"] == "Customer Ref")
+    check("order_id mapped", m["order_id"] == "Order No")
+    check("order_date mapped", m["order_date"] == "Order Date")
+    check("order_amount mapped", m["order_amount"] == "Total (AUD)")
+    check("product mapped", m["product"] == "Product Name")
+    check("category mapped", m["category"] == "Dept")
+    check("absent optional is None", m["quantity"] is None)
+
+
+def test_fuzzy_map_no_match():
+    from src.data.ingest.mapper import fuzzy_map
+    m = fuzzy_map([{"name": "xyz"}, {"name": "foo"}])
+    check("unmatched required is None", m["customer_id"] is None)
+
+
 def main():
     import tempfile
     with tempfile.TemporaryDirectory() as d:
         test_reader_csv_comma(d)
         test_reader_semicolon_and_utf16(d)
     test_profiler()
+    test_fuzzy_map()
+    test_fuzzy_map_no_match()
     print(f"\n{_passed} checks passed.")
 
 
