@@ -10,6 +10,39 @@ This file has two jobs:
 
 ## 📓 Project Journal
 
+### 2026-07-03 — Intelligence Layer, Phase 3: Ingestion pipeline
+Built the upload path + malfunction firewall so a client's own CSV/Excel becomes
+canonical data (spec §3; plan: docs/superpowers/plans/2026-07-03-ingestion-pipeline.md).
+New package `src/data/ingest/` (all pure / Streamlit-free):
+- **`reader.py`** — CSV/Excel → all-string DataFrame; sniffs encoding (BOM +
+  utf-8/latin-1 fallback) and delimiter. Reads every cell as `str` so raw
+  amounts/dates/ids survive verbatim to the validator.
+- **`profiler.py`** — per-column profile (guessed kind, ≤5 samples, %null,
+  %unique-of-non-blank, deterministic random sampling); the ONLY thing the mapper
+  sends to the LLM — never raw rows (cheap + no PII).
+- **`mapper.py`** — `propose_mapping` (injected `generate_fn`; drops hallucinated /
+  non-string headers) with a deterministic `fuzzy_map` fallback (global-best
+  header→field assignment) so mapping works with zero LLM.
+- **`validator.py`** — the firewall: strips `$`/commas, reads `(50.00)` accounting
+  notation as negative, clips negatives to 0 with a warning, parses dates, rejects
+  (with human messages naming the column + % bad, never a stack trace) on unmapped
+  or absent-in-file columns, empty files, >10% unparseable date/amount, or zero
+  surviving rows; builds `order_items` only for mapped optional columns (no all-None
+  columns that would fool Phase 1's availability tagging).
+- **`builder.py`** — validate → dedupe orders on order_id (order-grained: amount is
+  a repeated per-order total; warns if a file looks line-grained) → Phase-1
+  `build_feature_matrix`; returns a plain result dict (ok/errors/warnings/orders/
+  order_items/matrix) so the UI never catches exceptions.
+- **`mapping_store.py`** — persist the confirmed mapping recipe keyed by a header
+  fingerprint (`.app_state/mappings.json`); same-shaped re-upload reuses it. No raw
+  rows at rest; best-effort (tolerates a corrupt/non-dict store), never raises.
+- Scope (narrow): pure pipeline + persistence + tests only. The Streamlit confirm
+  screen, upload UI, and app wiring are Phase 4 integration — app.py untouched.
+- Tests: `tests/test_ingest.py` (reader/profiler/mapper/validator/builder — the
+  firewall contract, 78 checks) + `tests/test_mapping_persist.py` (9). No network.
+  Existing canonical (52), demo-adapter (40), scoring (6), simulation (21) suites
+  still green.
+
 ### 2026-07-02 — Intelligence Layer, Phase 2: Instacart demo adapter
 Instacart now flows into the canonical shape through the same pipe a client
 upload will (spec §6; plan: docs/superpowers/plans/2026-07-02-demo-adapter.md).
