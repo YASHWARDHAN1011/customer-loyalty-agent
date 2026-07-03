@@ -77,6 +77,22 @@ def test_fuzzy_map_no_match():
     check("unmatched required is None", m["customer_id"] is None)
 
 
+def test_fuzzy_map_global_best():
+    # Header set where greedy-in-field-order used to mis-map: "Purchase ID"
+    # must NOT steal order_date, and order_amount must keep its column.
+    from src.data.ingest.mapper import fuzzy_map
+    profile = [{"name": h} for h in
+               ["Member ID", "Purchase ID", "Purchase Date",
+                "Purchase Total", "Item", "Qty"]]
+    m = fuzzy_map(profile)
+    check("customer mapped to member", m["customer_id"] == "Member ID")
+    check("order_id not lost", m["order_id"] == "Purchase ID")
+    check("order_date is the date column", m["order_date"] == "Purchase Date")
+    check("order_amount is the total column", m["order_amount"] == "Purchase Total")
+    check("product mapped to item", m["product"] == "Item")
+    check("quantity mapped to qty", m["quantity"] == "Qty")
+
+
 def main():
     import tempfile
     with tempfile.TemporaryDirectory() as d:
@@ -85,6 +101,7 @@ def main():
     test_profiler()
     test_fuzzy_map()
     test_fuzzy_map_no_match()
+    test_fuzzy_map_global_best()
     print(f"\n{_passed} checks passed.")
 
 

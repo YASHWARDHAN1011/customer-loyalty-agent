@@ -21,17 +21,17 @@ CANONICAL_FIELDS = {
                                 "member", "account", "email"]},
     "order_id":    {"required": True,
                     "aliases": ["order", "transaction", "txn", "invoice",
-                                "receipt", "reference"]},
+                                "receipt", "reference", "purchase"]},
     "order_date":  {"required": True,
-                    "aliases": ["date", "ordered", "purchase", "timestamp",
-                                "created", "placed"]},
+                    "aliases": ["date", "ordered", "timestamp",
+                                "created", "placed", "purchasedate"]},
     "order_amount": {"required": True,
                      "aliases": ["amount", "total", "revenue", "price", "value",
-                                 "spend", "sales", "gross", "paid", "aud"]},
+                                 "spend", "sales", "gross", "paid"]},
     "product":  {"required": False,
-                 "aliases": ["product", "item", "sku", "article", "name"]},
+                 "aliases": ["product", "item", "sku", "article", "productname"]},
     "category": {"required": False,
-                 "aliases": ["category", "department", "dept", "aisle", "type",
+                 "aliases": ["category", "department", "dept", "aisle",
                              "class", "group"]},
     "quantity": {"required": False,
                  "aliases": ["quantity", "qty", "count", "units", "number"]},
@@ -63,21 +63,35 @@ def _score(header: str, field: str, aliases: list) -> float:
 def fuzzy_map(profile: list) -> dict:
     """Deterministic header->canonical mapping. `profile` is a list of column
     dicts (only each dict's `name` is used). Every canonical field is a key;
-    unmatched fields map to None."""
+    unmatched fields map to None.
+
+    Assignment is greedy by best GLOBAL score: all (field, header) pairs scoring
+    at or above the threshold are ranked by descending score, and each is taken
+    only if neither its field nor its header is already claimed. This beats
+    greedy-in-field-order, which could hand a required field's obvious column to
+    an earlier, weaker match. Ties break deterministically by field order then
+    header order (stable for mapping persistence).
+    """
+    field_order = {field: i for i, field in enumerate(CANONICAL_FIELDS)}
     headers = [p["name"] for p in profile]
-    mapping = {}
-    used = set()
+    mapping = {field: None for field in CANONICAL_FIELDS}
+
+    candidates = []
     for field, meta in CANONICAL_FIELDS.items():
-        best_header, best_score = None, 0.0
         for h in headers:
-            if h in used:
-                continue
             s = _score(h, field, meta["aliases"])
-            if s > best_score:
-                best_header, best_score = h, s
-        if best_header is not None and best_score >= _MATCH_THRESHOLD:
-            mapping[field] = best_header
-            used.add(best_header)
-        else:
-            mapping[field] = None
+            if s >= _MATCH_THRESHOLD:
+                candidates.append((s, field, h))
+
+    # Best global score first; deterministic tie-break by field then header.
+    candidates.sort(key=lambda c: (-c[0], field_order[c[1]], headers.index(c[2])))
+
+    assigned_fields = set()
+    used_headers = set()
+    for score, field, header in candidates:
+        if field in assigned_fields or header in used_headers:
+            continue
+        mapping[field] = header
+        assigned_fields.add(field)
+        used_headers.add(header)
     return mapping
