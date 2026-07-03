@@ -214,6 +214,16 @@ def test_validate_empty_file():
     check("empty file has a message", len(r.errors) > 0)
 
 
+def test_validate_absent_columns():
+    # A confirmed mapping that points at columns not present in df must be
+    # rejected cleanly by the firewall — never a KeyError / stack trace.
+    from src.data.ingest.validator import validate
+    r = validate(pd.DataFrame({"x": ["1"], "y": ["2"]}), _GOOD_MAP)
+    check("absent mapped columns rejected", r.ok is False)
+    check("firewall gives a human message, no crash",
+          any("not in the uploaded file" in e for e in r.errors))
+
+
 def main():
     import tempfile
     with tempfile.TemporaryDirectory() as d:
@@ -232,6 +242,7 @@ def main():
     test_validate_negative_amount_warns()
     test_validate_builds_items()
     test_validate_empty_file()
+    test_validate_absent_columns()
     print(f"\n{_passed} checks passed.")
 
 

@@ -46,6 +46,16 @@ def validate(df: pd.DataFrame, mapping: dict) -> ValidationResult:
             + ", ".join(missing) + ". Map them on the confirm screen and retry.")
         return ValidationResult(False, errors, warnings)
 
+    mapped_cols = [mapping[f] for f in REQUIRED]
+    mapped_cols += [mapping[f] for f in ("product", "category", "quantity")
+                    if mapping.get(f)]
+    absent = sorted({c for c in mapped_cols if c not in df.columns})
+    if absent:
+        errors.append(
+            "These mapped columns are not in the uploaded file: "
+            + ", ".join(absent) + ". Re-check the column mapping.")
+        return ValidationResult(False, errors, warnings)
+
     if len(df) == 0:
         return ValidationResult(
             False, ["The uploaded file has no data rows."], warnings)
