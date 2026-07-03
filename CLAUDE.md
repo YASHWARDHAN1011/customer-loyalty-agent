@@ -19,7 +19,10 @@ New package `src/data/ingest/` (all pure / Streamlit-free):
   amounts/dates/ids survive verbatim to the validator.
 - **`profiler.py`** — per-column profile (guessed kind, ≤5 samples, %null,
   %unique-of-non-blank, deterministic random sampling); the ONLY thing the mapper
-  sends to the LLM — never raw rows (cheap + no PII).
+  sends to the LLM — never the full dataset. (The profile includes ≤5 example
+  values per column, so a few real cell values — possibly PII — do reach the LLM;
+  the bulk of the data never leaves the machine. Sample masking is a Phase 4+
+  option.)
 - **`mapper.py`** — `propose_mapping` (injected `generate_fn`; drops hallucinated /
   non-string headers) with a deterministic `fuzzy_map` fallback (global-best
   header→field assignment) so mapping works with zero LLM.
