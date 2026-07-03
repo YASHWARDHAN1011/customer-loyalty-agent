@@ -125,7 +125,7 @@ def _parse_llm_mapping(raw: str, headers: list) -> dict:
     header_set = set(headers)
     mapping = {f: None for f in CANONICAL_FIELDS}
     for field, col in obj.items():
-        if field in CANONICAL_FIELDS and col in header_set:
+        if field in CANONICAL_FIELDS and isinstance(col, str) and col in header_set:
             mapping[field] = col
     return mapping
 

@@ -125,6 +125,28 @@ def test_propose_mapping_fallback():
     check("no generate_fn -> fuzzy", res2["source"] == "fuzzy")
 
 
+def test_propose_mapping_nested_values():
+    # Some LLMs wrap each answer as {"column":..., "confidence":...} or return a
+    # number. Non-string values must be ignored, not crash — and with no usable
+    # required field mapped, propose_mapping falls back to fuzzy.
+    from src.data.ingest.mapper import propose_mapping, _parse_llm_mapping
+    profile = [{"name": "Cust Ref"}, {"name": "Order No"},
+               {"name": "Order Date"}, {"name": "Total"}]
+
+    parsed = _parse_llm_mapping(
+        '{"customer_id": {"column": "Cust Ref", "confidence": 0.9}, "order_id": 3}',
+        ["Cust Ref", "Order No", "Order Date", "Total"])
+    check("nested value ignored", parsed["customer_id"] is None)
+    check("numeric value ignored", parsed["order_id"] is None)
+
+    def nested_gen(prompt):
+        return '{"customer_id": {"column": "Cust Ref"}}'
+
+    res = propose_mapping(profile, generate_fn=nested_gen)
+    check("nested-only reply falls back to fuzzy", res["source"] == "fuzzy")
+    check("fuzzy recovered customer_id", res["mapping"]["customer_id"] == "Cust Ref")
+
+
 def main():
     import tempfile
     with tempfile.TemporaryDirectory() as d:
@@ -136,6 +158,7 @@ def main():
     test_fuzzy_map_global_best()
     test_propose_mapping_llm()
     test_propose_mapping_fallback()
+    test_propose_mapping_nested_values()
     print(f"\n{_passed} checks passed.")
 
 
