@@ -303,6 +303,36 @@ def test_build_canonical_line_grained_warns():
     check("still deduped to one order", len(res["orders"]) == 1)
 
 
+def test_validate_accounting_negative_with_currency():
+    from src.data.ingest.validator import validate
+    df = _good_df(); df["amt"] = ["($25.00)", "10", "20"]
+    r = validate(df, _GOOD_MAP)
+    check("($25.00) treated as negative -> clipped to 0",
+          float(r.orders["order_amount"].iloc[0]) == 0.0)
+    check("currency-in-parens warns negative",
+          any("negative" in w.lower() for w in r.warnings))
+
+
+def test_validate_comma_decimal_warns():
+    from src.data.ingest.validator import validate
+    df = _good_df(); df["amt"] = ["1.234,56", "10", "20"]
+    r = validate(df, _GOOD_MAP)
+    check("comma-decimal still ok (not auto-converted)", r.ok is True)
+    check("comma-decimal warns",
+          any("comma" in w.lower() for w in r.warnings))
+
+
+def test_reader_accepts_file_like():
+    from io import BytesIO
+    from src.data.ingest.reader import read_table
+    buf = BytesIO(b"cust,ord,amt\n1,100,9.50\n")
+    buf.name = "upload.csv"
+    df = read_table(buf)
+    check("file-like read", len(df) == 1)
+    check("file-like headers", list(df.columns) == ["cust", "ord", "amt"])
+    check("file-like cells are strings", df["amt"].iloc[0] == "9.50")
+
+
 def main():
     import tempfile
     with tempfile.TemporaryDirectory() as d:
@@ -329,6 +359,9 @@ def main():
     test_build_canonical_dedups_orders()
     test_build_canonical_rejects_bad()
     test_build_canonical_line_grained_warns()
+    test_validate_accounting_negative_with_currency()
+    test_validate_comma_decimal_warns()
+    test_reader_accepts_file_like()
     print(f"\n{_passed} checks passed.")
 
 

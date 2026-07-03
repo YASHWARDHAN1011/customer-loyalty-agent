@@ -2,8 +2,11 @@
 Column profiler: describe each column without exposing raw rows.
 
 Produces, per column, a name / guessed kind / a few sample values / %null /
-%unique. This profile is the ONLY thing the mapper sends to the LLM — never raw
-rows — so mapping is cheap and no customer PII leaves the machine. Pure module.
+%unique. This profile is the ONLY thing the mapper sends to the LLM — never the
+full dataset, only this per-column profile. NOTE: the profile includes up to 5
+example values per column, so a small number of real cell values (which may
+include PII) are shown to the LLM; the bulk of the data never leaves the machine.
+Pure module.
 """
 
 import pandas as pd

@@ -35,9 +35,11 @@ def _clean_amount(series: pd.Series) -> pd.Series:
     (they denote refunds/credits) rather than being silently turned positive.
     """
     s = series.astype(str).str.strip()
-    # (50.00) -> -50.00  before the generic strip, so refunds stay negative.
-    accounting = s.str.match(r"^\([\d,.\s]+\)$").fillna(False)
-    s = s.where(~accounting, "-" + s.str.strip("()"))
+    # Any parenthesised value containing a digit is accounting-negative
+    # notation (refund/credit): "(50.00)", "($25.00)", "(1,200)". Rewrite to a
+    # leading minus BEFORE the generic strip so it stays negative.
+    accounting = s.str.match(r"^\(.*\d.*\)$").fillna(False)
+    s = s.where(~accounting, "-" + s.str.replace(r"[()]", "", regex=True))
     cleaned = s.str.replace(r"[^0-9.\-]", "", regex=True).replace("", None)
     return pd.to_numeric(cleaned, errors="coerce")
 
@@ -96,6 +98,17 @@ def validate(df: pd.DataFrame, mapping: dict) -> ValidationResult:
             f"(likely returns/refunds).")
         amt = amt.clip(lower=0)
     orders["order_amount"] = amt
+
+    # Comma-as-decimal (e.g. "1.234,56") parses to a ~1000x-wrong number and does
+    # NOT trip the numeric check. We don't guess the locale — we warn so the
+    # operator can verify on the confirm screen.
+    comma_decimal = (raw_amt.astype(str).str.strip()
+                     .str.match(r"^-?[\d.]*\d,\d{1,2}$").fillna(False))
+    if comma_decimal.any():
+        warnings.append(
+            f"{int(comma_decimal.sum())} amount(s) look like they use a comma as "
+            f"the decimal separator (e.g. '1.234,56') and may be misread. Check "
+            f"the amount column '{mapping['order_amount']}'.")
 
     orders["customer_id"] = orders["customer_id"].replace("", None)
     orders["order_id"] = orders["order_id"].replace("", None)

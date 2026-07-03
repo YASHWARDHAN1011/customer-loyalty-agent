@@ -7,7 +7,6 @@ the validator, which is the single place that coerces types. Pure / no Streamlit
 """
 
 import csv
-from io import StringIO
 
 import pandas as pd
 
@@ -38,13 +37,32 @@ def sniff_delimiter(sample: str) -> str:
         return ","
 
 
-def read_table(path: str, sheet: int = 0) -> pd.DataFrame:
-    """Read a CSV or Excel file at `path` into an all-string DataFrame."""
-    lower = str(path).lower()
-    if lower.endswith((".xlsx", ".xls")):
-        return pd.read_excel(path, sheet_name=sheet, dtype=str)
-    with open(path, "rb") as f:
-        raw = f.read()
+def read_table(source, sheet=0, *, filename: str = None) -> pd.DataFrame:
+    """Read a CSV or Excel source into an all-string DataFrame.
+
+    `source` may be a filesystem path (str) or a binary file-like object such as
+    a Streamlit UploadedFile. File type is inferred from `filename`, else the
+    source's own name/path extension. CSV encoding + delimiter are sniffed.
+    """
+    from io import BytesIO, StringIO
+
+    name = filename or (source if isinstance(source, str)
+                        else getattr(source, "name", "")) or ""
+    is_excel = str(name).lower().endswith((".xlsx", ".xls"))
+
+    if isinstance(source, str):
+        with open(source, "rb") as f:
+            raw = f.read()
+    else:
+        raw = source.read()
+        if hasattr(source, "seek"):
+            try:
+                source.seek(0)
+            except Exception:
+                pass
+
+    if is_excel:
+        return pd.read_excel(BytesIO(raw), sheet_name=sheet, dtype=str)
     text = raw.decode(sniff_encoding(raw))
     sep = sniff_delimiter(text[:4096])
     return pd.read_csv(StringIO(text), sep=sep, dtype=str)
