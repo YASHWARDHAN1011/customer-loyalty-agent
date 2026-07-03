@@ -245,6 +245,50 @@ def test_validate_category_only_no_product_column():
     check("category column present", "category" in r.order_items.columns)
 
 
+def test_build_canonical_full():
+    from src.data.ingest.builder import build_canonical
+    df = _good_df()
+    df["prod"] = ["milk", "eggs", "soda"]; df["dept"] = ["dairy", "dairy", "drinks"]
+    m = dict(_GOOD_MAP, product="prod", category="dept")
+    res = build_canonical(df, m)
+    check("build ok", res["ok"] is True)
+    check("orders returned", res["orders"] is not None)
+    check("matrix returned", res["matrix"] is not None)
+    check("optional features available on rich upload",
+          res["matrix"].is_available("avg_basket_size"))
+    check("core features available",
+          res["matrix"].is_available("monetary"))
+
+
+def test_build_canonical_orders_only():
+    from src.data.ingest.builder import build_canonical
+    res = build_canonical(_good_df(), _GOOD_MAP)
+    check("orders-only ok", res["ok"] is True)
+    check("optional tagged unavailable",
+          res["matrix"].is_available("reorder_rate") is False)
+    check("core still available", res["matrix"].is_available("recency_days"))
+
+
+def test_build_canonical_dedups_orders():
+    from src.data.ingest.builder import build_canonical
+    # order 100 appears twice (two line rows); amount is the order total repeated.
+    df = pd.DataFrame({
+        "cust": ["1", "1"], "ord": ["100", "100"],
+        "when": ["2024-01-02", "2024-01-02"], "amt": ["50", "50"]})
+    res = build_canonical(df, _GOOD_MAP)
+    check("duplicate order rows collapsed", len(res["orders"]) == 1)
+    check("monetary not double-counted",
+          float(res["matrix"].frame["monetary"].iloc[0]) == 50.0)
+
+
+def test_build_canonical_rejects_bad():
+    from src.data.ingest.builder import build_canonical
+    res = build_canonical(_good_df(), dict(_GOOD_MAP, customer_id=None))
+    check("bad mapping surfaces not-ok", res["ok"] is False)
+    check("errors passed through", len(res["errors"]) > 0)
+    check("no matrix on failure", res["matrix"] is None)
+
+
 def main():
     import tempfile
     with tempfile.TemporaryDirectory() as d:
@@ -266,6 +310,10 @@ def main():
     test_validate_absent_columns()
     test_validate_accounting_negative()
     test_validate_category_only_no_product_column()
+    test_build_canonical_full()
+    test_build_canonical_orders_only()
+    test_build_canonical_dedups_orders()
+    test_build_canonical_rejects_bad()
     print(f"\n{_passed} checks passed.")
 
 
