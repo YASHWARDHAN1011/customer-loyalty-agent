@@ -224,6 +224,27 @@ def test_validate_absent_columns():
           any("not in the uploaded file" in e for e in r.errors))
 
 
+def test_validate_accounting_negative():
+    from src.data.ingest.validator import validate
+    df = _good_df(); df["amt"] = ["(50.00)", "10", "20"]
+    r = validate(df, _GOOD_MAP)
+    check("accounting negative treated as negative -> clipped to 0",
+          float(r.orders["order_amount"].iloc[0]) == 0.0)
+    check("accounting negative warns", any("negative" in w.lower() for w in r.warnings))
+
+
+def test_validate_category_only_no_product_column():
+    # Only category mapped (no product) -> order_items must NOT have a product
+    # column, so Phase 1 marks reorder_rate unavailable rather than computing junk.
+    from src.data.ingest.validator import validate
+    df = _good_df(); df["dept"] = ["dairy", "dairy", "drinks"]
+    m = dict(_GOOD_MAP, category="dept")
+    r = validate(df, m)
+    check("items built for category-only", r.order_items is not None)
+    check("no product column when product unmapped", "product" not in r.order_items.columns)
+    check("category column present", "category" in r.order_items.columns)
+
+
 def main():
     import tempfile
     with tempfile.TemporaryDirectory() as d:
@@ -243,6 +264,8 @@ def main():
     test_validate_builds_items()
     test_validate_empty_file()
     test_validate_absent_columns()
+    test_validate_accounting_negative()
+    test_validate_category_only_no_product_column()
     print(f"\n{_passed} checks passed.")
 
 

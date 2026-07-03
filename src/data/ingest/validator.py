@@ -29,10 +29,16 @@ class ValidationResult:
 
 
 def _clean_amount(series: pd.Series) -> pd.Series:
-    """Strip everything but digits/dot/minus, then coerce to float (NaN if empty)."""
-    cleaned = (series.astype(str)
-               .str.replace(r"[^0-9.\-]", "", regex=True)
-               .replace("", None))
+    """Strip currency symbols/commas and coerce to float (NaN if empty).
+
+    Accounting-style parenthesised values like "(50.00)" are read as NEGATIVE
+    (they denote refunds/credits) rather than being silently turned positive.
+    """
+    s = series.astype(str).str.strip()
+    # (50.00) -> -50.00  before the generic strip, so refunds stay negative.
+    accounting = s.str.match(r"^\([\d,.\s]+\)$").fillna(False)
+    s = s.where(~accounting, "-" + s.str.strip("()"))
+    cleaned = s.str.replace(r"[^0-9.\-]", "", regex=True).replace("", None)
     return pd.to_numeric(cleaned, errors="coerce")
 
 
@@ -70,7 +76,8 @@ def validate(df: pd.DataFrame, mapping: dict) -> ValidationResult:
     bad_dates = dates.isna() & raw_dates.notna() & (raw_dates.astype(str).str.strip() != "")
     if len(df) and bad_dates.mean() > _FAIL_FRACTION:
         errors.append(
-            f"{int(bad_dates.sum())} value(s) in the date column "
+            f"{int(bad_dates.sum())} of {len(df)} value(s) "
+            f"({bad_dates.mean():.0%}) in the date column "
             f"'{mapping['order_date']}' could not be read as dates.")
     orders["order_date"] = dates
 
@@ -79,7 +86,8 @@ def validate(df: pd.DataFrame, mapping: dict) -> ValidationResult:
     bad_amt = amt.isna() & raw_amt.notna() & (raw_amt.astype(str).str.strip() != "")
     if len(df) and bad_amt.mean() > _FAIL_FRACTION:
         errors.append(
-            f"{int(bad_amt.sum())} value(s) in the amount column "
+            f"{int(bad_amt.sum())} of {len(df)} value(s) "
+            f"({bad_amt.mean():.0%}) in the amount column "
             f"'{mapping['order_amount']}' are not numeric.")
     negatives = (amt < 0)
     if negatives.any():
@@ -106,10 +114,10 @@ def validate(df: pd.DataFrame, mapping: dict) -> ValidationResult:
     items = None
     if mapping.get("product") or mapping.get("category"):
         items = pd.DataFrame({"order_id": df[mapping["order_id"]].astype(str).str.strip()})
-        items["product"] = (df[mapping["product"]] if mapping.get("product")
-                            else None)
-        items["category"] = (df[mapping["category"]] if mapping.get("category")
-                             else None)
+        if mapping.get("product"):
+            items["product"] = df[mapping["product"]]
+        if mapping.get("category"):
+            items["category"] = df[mapping["category"]]
         if mapping.get("quantity"):
             items["quantity"] = _clean_amount(df[mapping["quantity"]]).fillna(1)
         else:
