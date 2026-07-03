@@ -147,6 +147,73 @@ def test_propose_mapping_nested_values():
     check("fuzzy recovered customer_id", res["mapping"]["customer_id"] == "Cust Ref")
 
 
+def _good_df():
+    return pd.DataFrame({
+        "cust": ["1", "1", "2"],
+        "ord":  ["100", "101", "200"],
+        "when": ["2024-01-02", "2024-01-20", "2024-01-05"],
+        "amt":  ["$9.50", "1,200.00", "40"],
+    })
+
+_GOOD_MAP = {"customer_id": "cust", "order_id": "ord",
+             "order_date": "when", "order_amount": "amt",
+             "product": None, "category": None, "quantity": None}
+
+
+def test_validate_happy():
+    from src.data.ingest.validator import validate
+    r = validate(_good_df(), _GOOD_MAP)
+    check("valid input ok", r.ok is True)
+    check("no errors", r.errors == [])
+    check("dollar+comma amount cleaned", float(r.orders["order_amount"].iloc[1]) == 1200.0)
+    check("dates parsed", str(r.orders["order_date"].dtype).startswith("datetime"))
+    check("no items when unmapped", r.order_items is None)
+
+
+def test_validate_missing_required():
+    from src.data.ingest.validator import validate
+    m = dict(_GOOD_MAP, order_amount=None)
+    r = validate(_good_df(), m)
+    check("rejects missing required", r.ok is False)
+    check("names the missing field", any("order_amount" in e for e in r.errors))
+    check("message is human, not a trace", all("Traceback" not in e for e in r.errors))
+
+
+def test_validate_bad_dates():
+    from src.data.ingest.validator import validate
+    df = _good_df(); df["when"] = ["nope", "nope", "nope"]
+    r = validate(df, _GOOD_MAP)
+    check("rejects unparseable dates", r.ok is False)
+    check("date error mentions column", any("when" in e for e in r.errors))
+
+
+def test_validate_negative_amount_warns():
+    from src.data.ingest.validator import validate
+    df = _good_df(); df["amt"] = ["-5", "10", "20"]
+    r = validate(df, _GOOD_MAP)
+    check("negatives do not hard-fail", r.ok is True)
+    check("negative produces a warning", any("negative" in w.lower() for w in r.warnings))
+    check("negative clipped to 0", float(r.orders["order_amount"].iloc[0]) == 0.0)
+
+
+def test_validate_builds_items():
+    from src.data.ingest.validator import validate
+    df = _good_df(); df["prod"] = ["milk", "eggs", "soda"]; df["dept"] = ["dairy", "dairy", "drinks"]
+    m = dict(_GOOD_MAP, product="prod", category="dept")
+    r = validate(df, m)
+    check("items built when mapped", r.order_items is not None)
+    check("items have canonical cols",
+          set(["order_id", "product", "category", "quantity"]).issubset(r.order_items.columns))
+    check("quantity defaults to 1", int(r.order_items["quantity"].iloc[0]) == 1)
+
+
+def test_validate_empty_file():
+    from src.data.ingest.validator import validate
+    r = validate(pd.DataFrame({"cust": [], "ord": [], "when": [], "amt": []}), _GOOD_MAP)
+    check("empty file rejected cleanly", r.ok is False)
+    check("empty file has a message", len(r.errors) > 0)
+
+
 def main():
     import tempfile
     with tempfile.TemporaryDirectory() as d:
@@ -159,6 +226,12 @@ def main():
     test_propose_mapping_llm()
     test_propose_mapping_fallback()
     test_propose_mapping_nested_values()
+    test_validate_happy()
+    test_validate_missing_required()
+    test_validate_bad_dates()
+    test_validate_negative_amount_warns()
+    test_validate_builds_items()
+    test_validate_empty_file()
     print(f"\n{_passed} checks passed.")
 
 
