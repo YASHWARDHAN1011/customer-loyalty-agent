@@ -25,3 +25,6 @@ _sl_run.log
 
 # Local Claude Code skills/config
 .claude/
+
+# Local agent skills (installed per-machine, not project code)
+.agents/
