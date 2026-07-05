@@ -78,3 +78,22 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# --- Phase 4: simulate over canonical levers via an explicit `levers` arg ---
+import pandas as pd
+from src.analysis import simulation
+
+feats = pd.DataFrame({
+    "user_id": [1, 2, 3, 4],
+    "frequency": [1, 2, 8, 10],
+    "monetary": [20.0, 40.0, 300.0, 500.0],
+})
+weights = {"frequency": 0.5, "monetary": 0.5}
+res = simulation.simulate_campaign(
+    feats, weights, top_pct=25, feature="frequency", lift_pct=50,
+    levers=["frequency", "monetary"],
+)
+assert res["feature"] == "frequency", "sim runs on a canonical lever"
+assert res["conversions"] >= 0, "sim returns conversions"
+print("test_simulation: canonical-lever sim checks passed")
