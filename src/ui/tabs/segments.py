@@ -11,6 +11,9 @@ from src.ui.renderer import color_ratio
 
 
 def render_segments():
+    from src.ui.tabs._guard import needs_columns
+    if needs_columns(st.session_state.get('features'), ["total_orders"], "Segments"):
+        return
     st.header("Power User Profile")
     st.caption(
         "Comparing what power users do vs regular customers "

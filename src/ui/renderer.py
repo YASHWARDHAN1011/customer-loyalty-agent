@@ -258,13 +258,19 @@ def render_message(msg: dict):
                 st.altair_chart(chart, use_container_width=True)
 
         elif msg["type"] == "artifact":
-            st.download_button(
-                label=msg.get("label", "⬇️ Download"),
-                data=msg["content"],
-                file_name=msg["filename"],
-                mime=msg["mime"],
-                key=download_key(),
-            )
+            # A restored artifact message loses its binary payload (it doesn't
+            # round-trip through the JSON session store), so guard the download
+            # button — persistence must never crash the app.
+            if "content" not in msg:
+                st.caption("📎 A downloadable artifact from a previous session (regenerate to download).")
+            else:
+                st.download_button(
+                    label=msg.get("label", "⬇️ Download"),
+                    data=msg["content"],
+                    file_name=msg.get("filename", "artifact"),
+                    mime=msg.get("mime", "application/octet-stream"),
+                    key=download_key(),
+                )
 
 
 # ── Table Styling Helper ──────────────────────────────────────────────────────

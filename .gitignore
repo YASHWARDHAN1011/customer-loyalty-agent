@@ -22,6 +22,10 @@ _sl_run.log
 # Only *.csv is ignored above, so data/artifacts/*.parquet is tracked by default.
 !data/artifacts/
 !data/artifacts/*.parquet
+# Canonical (Phase 4) artifacts: small matrix + slim orders + availability map.
+!data/artifacts/canonical/
+!data/artifacts/canonical/*.parquet
+!data/artifacts/canonical/*.json
 
 # Local Claude Code skills/config
 .claude/

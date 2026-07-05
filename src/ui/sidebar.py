@@ -60,26 +60,26 @@ def render_sidebar(features, orders, run_btn_callback):
         st.markdown("### 📊 Dataset")
         st.metric("Users", f"{features['user_id'].nunique():,}")
         st.metric("Orders", f"{len(orders):,}")
-        st.metric(
-            "Avg Orders/User",
-            f"{features['total_orders'].mean():.1f}"
-        )
+        if "frequency" in features.columns:
+            st.metric("Avg Orders/User", f"{features['frequency'].mean():.1f}")
 
         st.divider()
 
         # Analysis settings
         st.markdown("### ⚙️ Settings")
 
-        # Sliders for feature weights
-        w_orders = st.slider("Total Orders", 0.0, 1.0, st.session_state.weights['total_orders'], 0.05)
-        w_reorder = st.slider("Reorder Rate", 0.0, 1.0, st.session_state.weights['reorder_rate'], 0.05)
-        w_diversity = st.slider("Dept Diversity", 0.0, 1.0, st.session_state.weights['dept_diversity'], 0.05)
-        w_basket = st.slider("Basket Size", 0.0, 1.0, st.session_state.weights['avg_basket_size'], 0.05)
-        w_items = st.slider("Total Items", 0.0, 1.0, st.session_state.weights['total_items'], 0.05)
-
-        total_w = w_orders + w_reorder + w_diversity + w_basket + w_items
+        # One weight slider per lever the dataset actually supports.
+        from src.data.levers import LEVER_LABELS, renormalize_weights
+        active = st.session_state.get('active_levers', [])
+        raw_weights = {}
+        for lv in active:
+            raw_weights[lv] = st.slider(
+                LEVER_LABELS.get(lv, lv), 0.0, 1.0,
+                float(st.session_state['weights'].get(lv, 0.0)), 0.05,
+            )
+        total_w = sum(raw_weights.values())
         if abs(total_w - 1.0) > 0.01:
-            st.warning(f"Weights sum to {total_w:.2f} (ideally 1.0)")
+            st.caption(f"Weights sum to {total_w:.2f} — normalized to 1.0 at scoring time.")
         else:
             st.success(f"✅ Weights sum: {total_w:.2f}")
 
@@ -97,14 +97,8 @@ def render_sidebar(features, orders, run_btn_callback):
         )
         st.session_state.lookback = lookback
 
-        # Update weights in session state
-        st.session_state['weights'] = {
-            'total_orders': w_orders,
-            'reorder_rate': w_reorder,
-            'dept_diversity': w_diversity,
-            'avg_basket_size': w_basket,
-            'total_items': w_items
-        }
+        # Update weights in session state (renormalized over active levers).
+        st.session_state['weights'] = renormalize_weights(raw_weights, active)
 
         run_btn = st.button(
             "🚀 Run Full Analysis",

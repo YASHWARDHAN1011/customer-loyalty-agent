@@ -64,3 +64,21 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+# --- Phase 4: get_thresholds over an explicit feature list ---
+import pandas as pd
+from src.analysis.scoring import get_thresholds
+
+power = pd.DataFrame({"frequency": [10, 8], "monetary": [500.0, 400.0]})
+regular = pd.DataFrame({"frequency": [2, 3], "monetary": [50.0, 70.0]})
+
+# explicit canonical feature list -> table built over exactly those features
+th = get_thresholds(power, regular, feature_cols=["frequency", "monetary"])
+assert set(th["Feature"]) == {"Frequency", "Monetary"}, "thresholds honor feature_cols"
+assert "Ratio" in th.columns, "thresholds keep the Ratio column"
+
+# a feature absent from the frames is skipped, not a KeyError
+th2 = get_thresholds(power, regular, feature_cols=["frequency", "reorder_rate"])
+assert set(th2["Feature"]) == {"Frequency"}, "absent feature is skipped, no crash"
+print("test_scoring: get_thresholds dynamic-list checks passed")

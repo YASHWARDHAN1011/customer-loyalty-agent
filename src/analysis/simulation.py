@@ -17,8 +17,12 @@ LEVERS = ["total_orders", "reorder_rate", "dept_diversity",
           "avg_basket_size", "total_items"]
 
 
-def simulate_campaign(features, weights, top_pct, feature, lift_pct):
+def simulate_campaign(features, weights, top_pct, feature, lift_pct, levers=None):
     """Project a single-feature campaign lift on regular users.
+
+    `levers` (defaults to the module LEVERS) is only used by callers to validate
+    `feature`; the math is unchanged. Kept as a param so the app can pass the
+    dataset's ACTIVE levers instead of the hardcoded Instacart five.
 
     Returns a deterministic dict of conversions + key deltas. Assumes `feature`
     is a valid lever (validated at the tool layer) and `features` is one row per
