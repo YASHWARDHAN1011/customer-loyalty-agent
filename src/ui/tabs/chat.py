@@ -98,13 +98,21 @@ def render_chat(features, orders):
     if not st.session_state.ui_history:
         total_users = features['user_id'].nunique()
         total_orders_count = len(orders)
+        # Dataset-agnostic third stat: prefer the canonical category signal,
+        # fall back to the legacy Instacart department count, else omit.
+        extra_line = ""
+        if 'category_diversity' in features.columns:
+            extra_line = (f"- **{features['category_diversity'].max():.0f}** "
+                          f"product categories for your most varied customer\n")
+        elif 'dept_diversity' in features.columns:
+            extra_line = (f"- **{features['dept_diversity'].max():.0f}** "
+                          f"unique departments\n")
         welcome = (
             f"👋 Hello! I'm your Customer Loyalty Intelligence Agent.\n\n"
-            f"I'm connected to the Instacart dataset:\n"
+            f"I'm connected to your customer dataset:\n"
             f"- **{total_users:,}** customers\n"
             f"- **{total_orders_count:,}** orders\n"
-            f"- **{features['dept_diversity'].max():.0f}** "
-            f"unique departments\n\n"
+            f"{extra_line}\n"
             f"**What I can do:**\n"
             f"- 📊 Score all customers by loyalty (0-100)\n"
             f"- 👥 Compare power users vs regular users\n"
