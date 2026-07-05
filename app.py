@@ -2,7 +2,8 @@ import streamlit as st
 st.set_page_config(page_title="Customer Loyalty", layout="wide", page_icon="🛒")
 
 from src.ui.renderer import apply_theme
-from src.data.loader import get_app_data
+from src.data.app_data import load_demo_app_data
+from src.data.levers import default_weights
 from src.ui.sidebar import render_sidebar
 from src.analysis.scoring import score_users, get_power_users, get_thresholds
 from src.config import MODEL_ARSENAL
@@ -56,13 +57,16 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-orders, full_data, features = get_app_data()
+orders, order_items, features, available, active_levers = load_demo_app_data()
+full_data = order_items  # line-item table (used by happy-path; degrades if empty)
 
 defaults = {
     'features': features, 'full_data': full_data, 'chat_history': [], 'ui_history': [],
     'model_idx': 0, 'scored_df': None, 'power': None, 'regular': None, 'cutoff': None,
     'thresholds_df': None, 'power_user_ids': set(), 'top_pct': 10,
-    'weights': {'total_orders': 0.30, 'reorder_rate': 0.25, 'dept_diversity': 0.20, 'avg_basket_size': 0.15, 'total_items': 0.10},
+    'weights': default_weights(active_levers),
+    'available': available,
+    'active_levers': active_levers,
     'artifacts': [],
     'active_model': MODEL_ARSENAL[0]['label'] if MODEL_ARSENAL else 'None'
 }
