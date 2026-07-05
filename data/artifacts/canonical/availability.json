@@ -1,0 +1,11 @@
+{
+  "recency_days": true,
+  "frequency": true,
+  "monetary": true,
+  "avg_order_value": true,
+  "tenure_days": true,
+  "avg_days_between_orders": true,
+  "category_diversity": true,
+  "avg_basket_size": true,
+  "reorder_rate": true
+}
