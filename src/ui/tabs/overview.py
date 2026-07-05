@@ -10,6 +10,9 @@ import pandas as pd
 
 
 def render_overview(features, orders):
+    from src.ui.tabs._guard import needs_columns
+    if needs_columns(features, ["total_orders"], "Overview"):
+        return
     st.header("Dataset Overview")
     st.caption(
         "Understanding the raw behavioral patterns "

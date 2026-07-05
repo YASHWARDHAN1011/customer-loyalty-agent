@@ -11,6 +11,12 @@ from src.analysis.happy_path import get_happy_paths
 
 
 def render_happy_path(full_data):
+    if full_data is None or len(full_data) == 0:
+        st.info(
+            "**Happy Path** needs product-level order data, which isn't "
+            "shipped with this dataset. Use the AI Chat to analyze this data instead."
+        )
+        return
     st.header("Happy Path Analysis")
     st.caption(
         "The most common behavioral sequences that lead "

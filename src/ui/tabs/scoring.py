@@ -11,6 +11,9 @@ import numpy as np
 
 
 def render_scoring():
+    from src.ui.tabs._guard import needs_columns
+    if needs_columns(st.session_state.get('features'), ["total_orders"], "Scoring"):
+        return
     st.header("Loyalty Scoring")
     st.caption(
         "Every customer scored 0-100 based on their "

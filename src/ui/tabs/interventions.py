@@ -11,6 +11,9 @@ from src.analysis.metrics import calculate_churn_risk
 
 
 def render_interventions():
+    from src.ui.tabs._guard import needs_columns
+    if needs_columns(st.session_state.get('features'), ["total_orders"], "Interventions"):
+        return
     st.header("Intervention Recommendations")
     st.caption(
         "Specific campaigns to convert regular users "
