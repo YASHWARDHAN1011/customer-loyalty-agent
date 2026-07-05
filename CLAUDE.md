@@ -10,6 +10,57 @@ This file has two jobs:
 
 ## 📓 Project Journal
 
+### 2026-07-05 — Intelligence Layer, Phase 4: Re-anchor + wire canonical data
+The app now runs on the **canonical FeatureMatrix** instead of the hardcoded
+Instacart path — the point where Phases 1–3 stop being inert and start powering
+the app. Every scoring surface is now lever-agnostic: it reads which loyalty
+levers exist from the data's availability map, never a fixed column list.
+- **`src/data/levers.py`** (NEW, pure): `SCORING_LEVERS` (higher-is-better RFM +
+  optional features; recency/avg-gap excluded — those are churn, not loyalty),
+  `LEVER_LABELS`, `active_levers(matrix)`, `default_weights`, `renormalize_weights`
+  (drops unavailable levers, rescales to 1.0, equal-weight fallback on all-zero).
+- **`src/data/app_data.py`** (NEW): the single wiring seam. `features_from_matrix`
+  aliases `customer_id`→`user_id` so legacy consumers/tools keep working and
+  returns `(features, available, active_levers)`. `load_demo_app_data()` prefers
+  committed canonical artifacts, else falls back to the demo adapter reading raw
+  CSVs.
+- **`scripts/build_canonical_artifacts.py`** (NEW) + committed
+  `data/artifacts/canonical/` (**35MB**: `features.parquet` = the per-customer
+  matrix, `availability.json`, slim `orders.parquet`). **Design change vs the
+  plan:** we commit the *computed matrix*, NOT the raw `order_items` table — that
+  is ~293MB for Instacart (over GitHub's 100MB limit) and its only committed
+  consumers (optional features) are already baked into the matrix. Item-level
+  surfaces (happy-path) degrade where items aren't shipped; `order_items` is
+  `None` on the artifact path.
+- **Re-anchored engine:** `scoring.get_thresholds(power, regular, feature_cols=None)`
+  derives comparison columns from the frame (skips absent, no `KeyError`);
+  `metrics.calculate_churn_risk` uses `recency_days` (RFM) with an
+  `avg_days_between_orders` legacy fallback and an id-column-agnostic lookup;
+  `simulation.simulate_campaign(..., levers=None)` accepts the dataset's active
+  levers. `app.py` loads via `app_data`, defaults weights from active levers, and
+  stores `available`/`active_levers`. `sidebar.py` renders one weight slider per
+  active lever (labels from `LEVER_LABELS`), renormalized at scoring time.
+- **Degradation, not deletion:** the 5 legacy dashboard tabs
+  (Overview/Scoring/Segments/Happy Path/Interventions) key on Instacart columns
+  that canonical data lacks. `src/ui/tabs/_guard.py` (`needs_columns`) makes each
+  show a "not available for this dataset — use AI Chat" info card instead of a
+  traceback. **Deep re-anchoring of these tabs' charts + `tools.py` column names
+  is deliberately deferred to Phase 7** (the chat-first shell deletes these tabs,
+  so re-skinning them now is throwaway).
+- **Also fixed (pre-existing, out of the plan):** a restored *artifact* chat
+  message crashed `renderer.render_message` (its binary payload doesn't
+  round-trip through the JSON session store) — now guarded, honoring the stated
+  "persistence must never crash the app" convention.
+- Verified: all 21 no-network suites green (incl. new `test_levers`,
+  `test_app_data`, `test_metrics`); app boots through **every tab with zero
+  exceptions** via `streamlit.testing.AppTest` on canonical data (HTTP 200 alone
+  hid a tab crash — AppTest surfaced it); the full analysis engine (score →
+  power/regular → thresholds → recency-churn → simulation) runs end-to-end on the
+  206,209-customer canonical demo.
+- Note: on the demo, recency-churn flags ~92% at-risk — a synthetic-date artifact
+  of the Instacart demo (no real order timestamps), not a bug; meaningful on a
+  client's real dates.
+
 ### 2026-07-03 — Intelligence Layer, Phase 3: Ingestion pipeline
 Built the upload path + malfunction firewall so a client's own CSV/Excel becomes
 canonical data (spec §3; plan: docs/superpowers/plans/2026-07-03-ingestion-pipeline.md).
