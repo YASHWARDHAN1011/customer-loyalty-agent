@@ -87,15 +87,21 @@ def get_power_users(scored_df, top_pct):
     return power, regular, cutoff
 
 
-def get_thresholds(power, regular):
-    """Build feature comparison table between segments."""
-    feature_cols = [
-        'total_orders', 'avg_days_between_orders',
-        'reorder_rate', 'dept_diversity',
-        'avg_basket_size', 'total_items'
-    ]
+def get_thresholds(power, regular, feature_cols=None):
+    """Build a feature-comparison table between segments.
+
+    `feature_cols` defaults to whatever numeric feature columns both frames
+    share (minus id/score columns), so it works on ANY dataset's levers.
+    Columns not present in the frames are skipped rather than raising.
+    """
+    if feature_cols is None:
+        skip = {"user_id", "customer_id", "raw_score", "loyalty_score"}
+        feature_cols = [c for c in power.columns
+                        if c not in skip and c in regular.columns]
     rows = []
     for col in feature_cols:
+        if col not in power.columns or col not in regular.columns:
+            continue
         pu_avg = power[col].mean()
         ru_avg = regular[col].mean()
         ratio = pu_avg / max(ru_avg, 0.001)
@@ -104,8 +110,6 @@ def get_thresholds(power, regular):
             'Power User Avg': round(pu_avg, 2),
             'Regular User Avg': round(ru_avg, 2),
             'Power User Min': round(power[col].min(), 2),
-            'Ratio': round(ratio, 1)
+            'Ratio': round(ratio, 1),
         })
-    return pd.DataFrame(rows).sort_values(
-        'Ratio', ascending=False
-    )
+    return pd.DataFrame(rows).sort_values('Ratio', ascending=False)
