@@ -36,17 +36,18 @@ ui_history = [
     {'role': 'assistant', 'type': 'chart', 'title': 'Top depts',
      'chart_type': 'bar', 'x': 'dept', 'y': 'count', 'data': chart_df},
 ]
-# Gemini-style history: dict turns plus a tool-call turn that must be dropped.
+# Phase 4.5 neutral history: text turn + a tool_call/tool_result exchange.
 chat_history = [
-    {'role': 'user', 'parts': ['who are power users?']},
-    {'role': 'model', 'parts': ['Here is the analysis.']},
-    {'role': 'model', 'parts': []},  # tool-call protobuf stand-in -> dropped
+    {'role': 'user', 'content': [{'type': 'text', 'text': 'who are power users?'}]},
+    {'role': 'assistant', 'content': [
+        {'type': 'tool_call', 'id': 't1', 'name': 'get_current_stats', 'args': {}}]},
+    {'role': 'user', 'content': [{'type': 'tool_result', 'id': 't1', 'text': 'ok'}]},
 ]
 
 # --- round-trip via the on-disk format (write serialized payload, load it) ---
 payload = {
     'ui_history': P._serialize_ui_history(ui_history),
-    'chat_history': P._serialize_chat_history(chat_history),
+    'chat_history': chat_history,  # neutral history stored verbatim
 }
 check(isinstance(payload['ui_history'][1]['data'], list), "chart DataFrame serialized to records")
 json.dumps(payload)  # must be JSON-safe; raises if not
@@ -64,9 +65,18 @@ restored_df = loaded_ui[1]['data']
 check(isinstance(restored_df, pd.DataFrame), "chart data rebuilt into a DataFrame")
 check(restored_df.equals(chart_df), "chart DataFrame round-trips exactly")
 
-check(len(loaded_chat) == 2, "chat history keeps 2 text turns, drops tool-call turn")
-check(loaded_chat[0] == {'role': 'user', 'parts': ['who are power users?']},
-      "chat turn restored in start_chat format")
+check(loaded_chat == chat_history, "neutral chat history round-trips unchanged")
+
+# --- Phase 4.5: is_neutral_history recognizes / rejects shapes ---
+check(P.is_neutral_history(chat_history) is True, "recognizes neutral history")
+old = [{'role': 'user', 'text': 'hi'}, {'role': 'model', 'text': 'hello'}]
+check(P.is_neutral_history(old) is False, "old Gemini shape is not neutral")
+
+# --- a saved OLD-shape session is discarded on load (not replayed) ---
+with open(P.SESSION_FILE, 'w', encoding='utf-8') as f:
+    json.dump({'ui_history': [], 'chat_history': old}, f)
+_, discarded = P.load_session()
+check(discarded == [], "incompatible pre-4.5 history is discarded on load")
 
 # --- clear ---
 P.clear_session()
