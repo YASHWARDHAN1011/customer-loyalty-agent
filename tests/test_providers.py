@@ -84,6 +84,53 @@ def main():
             idx += 1; continue
     check("failover reaches claude", result == "ANSWER" and landed == "claude")
 
+    # --- Phase 4.5: turn adapters translate neutral <-> SDK (mocked, no net) ---
+    from src.agent.providers import claude_tool_turn
+    from src.agent.tool_loop import user_text
+    from src.agent import tool_specs as _ts
+
+    def _sample(x: int = 1) -> dict:
+        """Sample."""
+        return {}
+    _specs = [_ts.spec_from_function(_sample)]
+
+    class _Block:
+        def __init__(self, **kw): self.__dict__.update(kw)
+
+    class _Resp:
+        def __init__(self, content, stop_reason):
+            self.content = content; self.stop_reason = stop_reason
+
+    class _FakeMessages:
+        def __init__(self, resp): self._resp = resp
+        def create(self, **kw): self.kw = kw; return self._resp
+
+    class _FakeClient:
+        def __init__(self, resp): self.messages = _FakeMessages(resp)
+
+    # Claude tool_use block -> neutral tool_calls
+    tool_resp = _Resp(
+        [_Block(type="tool_use", id="tu1", name="_sample", input={"x": 5})],
+        "tool_use")
+    turn = claude_tool_turn(
+        [user_text("hi")], _specs, key="k", model="m",
+        base_url="http://enterprise",
+        _client_factory=lambda **kw: _FakeClient(tool_resp))
+    check("claude tool_use -> neutral tool_call",
+          turn["tool_calls"][0]["name"] == "_sample")
+    check("claude input -> args", turn["tool_calls"][0]["args"] == {"x": 5})
+
+    # Claude text block -> neutral text; base_url threaded to the client
+    text_resp = _Resp([_Block(type="text", text="done")], "end_turn")
+    fc = {"client": None}
+    def _factory(**kw):
+        fc["client"] = kw; return _FakeClient(text_resp)
+    turn2 = claude_tool_turn([user_text("hi")], _specs, key="k", model="m",
+                             base_url="http://enterprise", _client_factory=_factory)
+    check("claude text -> neutral text", turn2["text"] == "done")
+    check("base_url threaded to client",
+          fc["client"]["base_url"] == "http://enterprise")
+
     print(f"\n{_passed} checks passed.")
 
 
