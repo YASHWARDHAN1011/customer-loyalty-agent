@@ -49,10 +49,18 @@ API_KEYS = list(dict.fromkeys(API_KEYS))
 # N keys Ã— 3 models = 3N total combinations.
 # â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
+# Each model is a SEPARATE daily free-tier quota bucket, so more distinct models
+# = more total headroom before exhaustion. Ordered best-first: proven-working and
+# most capable up top, the aging 2.0 buckets last (their free tier now reports
+# limit:0 on this project, so they're skipped fast by the fail-fast rotation).
 MODELS = [
-    "gemini-2.0-flash",       # Fast, capable, good quota
-    "gemini-2.0-flash-lite",  # Lightweight, separate quota
-    "gemini-2.5-flash",       # Latest, most capable, separate quota
+    "gemini-2.5-flash",        # proven working; 1M in / 65k out
+    "gemini-2.5-flash-lite",   # separate bucket, lightweight
+    "gemini-3.5-flash",        # newest general flash
+    "gemini-3.1-flash-lite",   # newest lite bucket
+    "gemini-2.5-pro",          # most capable (smaller free tier)
+    "gemini-2.0-flash",        # legacy fallback (may be limit:0)
+    "gemini-2.0-flash-lite",   # legacy fallback
 ]
 
 # Build every combination

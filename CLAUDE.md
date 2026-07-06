@@ -10,6 +10,18 @@ This file has two jobs:
 
 ## 📓 Project Journal
 
+### 2026-07-07 — Expand Gemini model buckets (more free-tier headroom)
+Refreshed `config.MODELS` from the aging 2.0-era list to current models, ordered
+best-first: `gemini-2.5-flash`, `-flash-lite`, `gemini-3.5-flash`,
+`gemini-3.1-flash-lite`, then `gemini-2.5-pro` and the legacy `2.0-flash`/`-lite`
+as last-resort. Each model is a SEPARATE daily free-tier quota bucket, so this is
+a direct capacity increase — with 4 keys the rotation grows 12 → 28 combos.
+Verified live against `list_models` + a real ping per model on key 1: the four
+newer flash buckets answer; `2.5-pro` and both `2.0` buckets report free-tier
+`limit:0` (kept last as insurance — they auto-activate on a billed key / reset).
+Newer buckets also raise output limit 8k → 64k. Pairs with the Phase 4.5 failover
+(Gemini→Claude) — add an `ANTHROPIC_API_KEY` for a whole extra provider tier.
+
 ### 2026-07-06 — Intelligence Layer / Chat-First, Phase 4.5: Provider-agnostic tool loop + config-swappable backend
 The tool-using chat is no longer Gemini-only. Its quota exhaustion was the chat's
 single point of failure — the text/reasoning path already failed over to Claude
