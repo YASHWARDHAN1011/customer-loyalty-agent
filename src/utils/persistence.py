@@ -7,10 +7,10 @@ Saves the chat so it survives an app restart. Two structures are stored to
 - ui_history : the rendered messages. `table`/`chart` entries carry a pandas
   DataFrame in `data`, which is converted to records for JSON and rebuilt into
   a DataFrame on load.
-- chat_history : Gemini conversation Content objects. Only the text of each
-  turn is kept (`{role, text}`); function-call/response protobufs are NOT
-  round-tripped — on reload the conversation is text + charts, which is enough
-  context for the agent to continue. (Accepted tradeoff.)
+- chat_history : the Phase-4.5 neutral message list — plain JSON already
+  (`{role, content:[{type,...}]}` text / tool_call / tool_result blocks). Saved
+  as-is and restored as-is. A pre-4.5 saved session (old Gemini `{role, text}`
+  shape) is discarded on load so the tool loop never sees an incompatible shape.
 
 All operations are best-effort: persistence must never crash the app.
 """
@@ -59,29 +59,23 @@ def _deserialize_ui_history(raw):
     return out
 
 
-def _part_text(part):
-    text = getattr(part, 'text', None)
-    if text is None and isinstance(part, str):
-        text = part
-    return text or ''
+def is_neutral_history(history):
+    """True if `history` is the Phase-4.5 neutral message list.
 
-
-def _serialize_chat_history(chat_history):
-    out = []
-    for content in chat_history or []:
-        if isinstance(content, dict):
-            role, parts = content.get('role'), content.get('parts', [])
-        else:
-            role, parts = getattr(content, 'role', None), getattr(content, 'parts', [])
-        text = ''.join(_part_text(p) for p in (parts or []))
-        if role in ('user', 'model') and text.strip():
-            out.append({'role': role, 'text': text})
-    return out
-
-
-def _deserialize_chat_history(raw):
-    # Gemini's start_chat accepts history as [{'role', 'parts': [text]}].
-    return [{'role': e['role'], 'parts': [e['text']]} for e in (raw or []) if e.get('text')]
+    Neutral = list of {"role","content":[blocks]} where each block is a dict
+    with a "type". Guards restore against pre-4.5 saved sessions (old Gemini
+    `{role, text}` shape), which are discarded rather than replayed.
+    """
+    if not isinstance(history, list):
+        return False
+    for m in history:
+        if not isinstance(m, dict) or "content" not in m or "role" not in m:
+            return False
+        if not isinstance(m["content"], list):
+            return False
+        if not all(isinstance(b, dict) and "type" in b for b in m["content"]):
+            return False
+    return True
 
 
 # ── Disk I/O ──────────────────────────────────────────────────────────────────
@@ -92,9 +86,11 @@ def save_session():
         return
     try:
         os.makedirs(STATE_DIR, exist_ok=True)
+        chat = st.session_state.get('chat_history', [])
         payload = {
             'ui_history': _serialize_ui_history(st.session_state.get('ui_history', [])),
-            'chat_history': _serialize_chat_history(st.session_state.get('chat_history', [])),
+            # Neutral history is already JSON-safe; store it verbatim.
+            'chat_history': chat if is_neutral_history(chat) else [],
         }
         with open(SESSION_FILE, 'w', encoding='utf-8') as f:
             json.dump(payload, f)
@@ -109,9 +105,12 @@ def load_session():
             payload = json.load(f)
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return None, None
+    saved_chat = payload.get('chat_history', [])
+    if not is_neutral_history(saved_chat):
+        saved_chat = []  # discard incompatible pre-4.5 history (best-effort)
     return (
         _deserialize_ui_history(payload.get('ui_history', [])),
-        _deserialize_chat_history(payload.get('chat_history', [])),
+        saved_chat,
     )
 
 

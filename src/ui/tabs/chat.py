@@ -8,6 +8,7 @@ import streamlit as st
 from src.config import API_KEYS, LLM_ARSENAL
 from src.ui.renderer import render_message, download_key
 from src.agent.caller import call_agent, probe_health
+from src.agent.tool_loop import user_text, assistant_text
 from src.agent.router import route
 from src.agent.orchestrator import run_reflexive, synthesize_goal
 from src.agent.proactive import get_briefing
@@ -301,8 +302,9 @@ def _run_goal_in_chat(goal: str):
             "role": "assistant", "type": "text", "content": summary,
         })
         # Continuity: let later reactive follow-ups see what the agent did.
-        st.session_state.chat_history.append({"role": "user", "parts": [goal]})
-        st.session_state.chat_history.append({"role": "model", "parts": [summary]})
+        # Neutral message shape (Phase 4.5) so the tool loop can replay history.
+        st.session_state.chat_history.append(user_text(goal))
+        st.session_state.chat_history.append(assistant_text(summary))
 
 
 def _deliverables_panel():

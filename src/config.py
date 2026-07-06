@@ -93,7 +93,48 @@ def build_llm_arsenal(api_keys, models, anthropic_key, claude_models):
     return arsenal
 
 
-LLM_ARSENAL = build_llm_arsenal(API_KEYS, MODELS, ANTHROPIC_API_KEY, CLAUDE_MODELS)
+# ── Phase 4.5: config-swappable backend profiles ─────────────────────────────
+# One setting (LLM_BACKEND) picks a named profile. 'dev' = today's behavior
+# (Gemini keys first, then Claude on exhaustion). A 'prod' profile — one
+# company-billed key at an enterprise base_url — can be added later with NO code
+# change. Each combo now carries base_url (default None) for the turn adapters.
+
+LLM_BACKEND = _get_secret("LLM_BACKEND") or "dev"
+
+BACKEND_PROFILES = {
+    "dev": {"providers": [
+        {"provider": "gemini", "keys": API_KEYS, "models": MODELS, "base_url": None},
+        {"provider": "claude",
+         "keys": [ANTHROPIC_API_KEY] if ANTHROPIC_API_KEY else [],
+         "models": CLAUDE_MODELS, "base_url": None},
+    ]},
+}
+
+
+def build_llm_arsenal_for_profile(profile):
+    """Build the combo rotation from a backend profile. Pure; no network.
+
+    Each combo: {"provider","key","model","label","base_url"}. Providers are
+    emitted in profile order (so 'dev' keeps Gemini-first-then-Claude). Labels
+    match the legacy scheme: gemini -> 'Key{n}+{model}', else '{Provider}+{model}'.
+    """
+    arsenal = []
+    for prov in profile.get("providers", []):
+        provider = prov["provider"]
+        base_url = prov.get("base_url")
+        for i, key in enumerate(prov.get("keys", [])):
+            for model in prov.get("models", []):
+                if provider == "gemini":
+                    label = f"Key{i+1}+{model}"
+                else:
+                    label = f"{provider.capitalize()}+{model}"
+                arsenal.append({"provider": provider, "key": key, "model": model,
+                                "label": label, "base_url": base_url})
+    return arsenal
+
+
+_active_profile = BACKEND_PROFILES.get(LLM_BACKEND, BACKEND_PROFILES["dev"])
+LLM_ARSENAL = build_llm_arsenal_for_profile(_active_profile)
 
 
 def get_working_model_idx():

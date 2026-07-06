@@ -6,6 +6,8 @@ orchestrator). `call_agent()` is the chat-specific wrapper that keeps the
 Gemini conversation history and automatic function calling.
 """
 
+from functools import partial
+
 import streamlit as st
 import google.generativeai as genai
 from google.api_core import exceptions as google_exceptions
@@ -15,7 +17,10 @@ from src.config import LLM_ARSENAL, API_KEYS, SYSTEM_PROMPT
 from src.agent.tools import ALL_TOOLS
 from src.agent.providers import (
     gemini_generate_text, claude_generate_text, is_eligible, provider_text,
+    gemini_tool_turn, claude_tool_turn,
 )
+from src.agent.tool_specs import TOOL_SPECS, execute_tool
+from src.agent.tool_loop import run_tool_conversation, user_text
 
 # Fail fast: never sit in the SDK's exponential-backoff retry loop on a 429 /
 # quota error. Without this, an exhausted key blocks for many seconds before
@@ -157,16 +162,51 @@ def probe_health(arsenal=None) -> str:
     return "exhausted" if probed_gemini else "no_keys"
 
 
+def _provider_turn_for(combo, system_instruction):
+    """Bind a combo to a neutral provider_turn(messages, specs) callable."""
+    if combo["provider"] == "claude":
+        return partial(claude_tool_turn, key=combo["key"], model=combo["model"],
+                       system_instruction=system_instruction,
+                       base_url=combo.get("base_url"))
+    return partial(gemini_tool_turn, key=combo["key"], model=combo["model"],
+                   system_instruction=system_instruction,
+                   base_url=combo.get("base_url"))
+
+
 def call_agent(prompt: str) -> str:
-    """Chat wrapper: full history + automatic function calling over ALL_TOOLS."""
-    result = generate(
-        prompt,
-        system_instruction=SYSTEM_PROMPT,
-        tools=ALL_TOOLS,
-        history=st.session_state.chat_history,
-        automatic_function_calling=True,
+    """Provider-agnostic tool-using chat over the neutral history + LLM_ARSENAL.
+
+    Rotates combos on quota/permission errors (Gemini first, Claude on
+    exhaustion), driving run_tool_conversation with the combo's turn adapter.
+    """
+    arsenal = LLM_ARSENAL
+    if not arsenal:
+        return ("⚠️ No API keys configured. "
+                "Please add GEMINI_KEY_1 to your .env file.")
+
+    base_history = st.session_state.chat_history
+    history_len = len(base_history)
+
+    for _ in range(len(arsenal)):
+        idx = st.session_state.model_idx % len(arsenal)
+        combo = arsenal[idx]
+        # Fresh copy per attempt so a failed partial turn leaves no residue.
+        working = list(base_history) + [user_text(prompt)]
+        try:
+            provider_turn = _provider_turn_for(combo, SYSTEM_PROMPT)
+            text, final_msgs = run_tool_conversation(
+                working, TOOL_SPECS, execute_tool, provider_turn)
+            st.session_state['active_model'] = combo['label']
+            st.session_state.chat_history = final_msgs
+            return text
+        except Exception:
+            # Roll back to the pre-attempt history, advance to the next combo.
+            st.session_state.chat_history = base_history[:history_len]
+            st.session_state.model_idx += 1
+            continue
+
+    return (
+        f"⚠️ All {len(arsenal)} API combinations are quota-exhausted right now. "
+        f"The analysis tabs still work fully. Gemini quotas reset at midnight "
+        f"Pacific time. For more capacity, add API keys or an ANTHROPIC_API_KEY."
     )
-    chat = result.get("chat")
-    if chat is not None:
-        st.session_state.chat_history = chat.history
-    return result["text"]

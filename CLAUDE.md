@@ -10,6 +10,49 @@ This file has two jobs:
 
 ## 📓 Project Journal
 
+### 2026-07-06 — Intelligence Layer / Chat-First, Phase 4.5: Provider-agnostic tool loop + config-swappable backend
+The tool-using chat is no longer Gemini-only. Its quota exhaustion was the chat's
+single point of failure — the text/reasoning path already failed over to Claude
+(Phase 5), but the path that actually matters (function calling) did not. Phase 4.5
+closes that gap with one hand-written tool loop both providers can drive, and makes
+the whole LLM backend selectable by a single config value.
+- **`src/agent/tool_specs.py`** (NEW, pure): a neutral tool registry auto-derived
+  from each tool's typed signature (`spec_from_function`, `TOOL_SPECS`) — one
+  source of truth both providers read, no hand-maintained schemas. `execute_tool`
+  is the ONLY place a tool runs; it summarizes the return for the model and
+  **catches any exception** so an Instacart-bound tool degrades into relayable text
+  instead of crashing the chat.
+- **`src/agent/tool_loop.py`** (NEW, pure): `run_tool_conversation` — the loop.
+  No Streamlit, no SDK imports; the provider "turn" and executor are injected, so
+  it's unit-testable with a scripted fake. Neutral message shape:
+  `{role, content:[{type:"text"|"tool_call"|"tool_result", …}]}`. Step-capped.
+- **`src/agent/providers.py`**: added `gemini_tool_turn` + `claude_tool_turn` —
+  each translates neutral messages ⇄ its SDK's native tool protocol, does ONE
+  round-trip, returns either `{text}` or `{tool_calls}`. Claude threads a
+  `base_url` so an enterprise endpoint (Vertex/Bedrock) can be pointed at later.
+- **`src/config.py`**: `LLM_BACKEND` picks a named profile from `BACKEND_PROFILES`;
+  `build_llm_arsenal_for_profile` builds the combo rotation, each combo now
+  carrying `base_url`. The `dev` profile reproduces today's Gemini-first-then-Claude
+  behavior exactly. A `prod` profile (one company key + enterprise `base_url`) drops
+  in later with NO code change.
+- **`src/agent/caller.py`**: `call_agent` now drives `run_tool_conversation` over
+  the neutral history + `LLM_ARSENAL`, binding each combo to its turn adapter and
+  **rotating Gemini→Claude on quota/permission errors** — the tool path fails over
+  at last. `generate()`/`probe_health()` unchanged.
+- **`src/ui/tabs/chat.py`**: the goal path's synthetic continuity turns now use the
+  neutral shape (was Gemini `{role, parts}`) so follow-ups replay cleanly.
+- **`src/utils/persistence.py`**: `chat_history` (now neutral, already JSON-safe) is
+  saved verbatim; `is_neutral_history` guards load so a pre-4.5 saved session is
+  discarded rather than replayed into the loop.
+- **Default behavior is identical to Phase 4** (no Anthropic key ⇒ Gemini-only).
+- **Deferred to Phase 5 (documented, not gaps):** `tools.py` is NOT re-anchored onto
+  canonical levers — `execute_tool`'s catch is only a safety net; a tool invoked on
+  canonical data still returns an error string. Conversational "can't run on this
+  dataset" messaging + choosing the prod host are Phase 5+.
+- Verified: all 20 no-network suites green (incl. new `test_tool_specs`,
+  `test_tool_loop`, `test_config`, `test_call_agent_boot`); app boots through the
+  chat wiring with **zero exceptions** on canonical data via `AppTest`.
+
 ### 2026-07-05 — Intelligence Layer, Phase 4: Re-anchor + wire canonical data
 The app now runs on the **canonical FeatureMatrix** instead of the hardcoded
 Instacart path — the point where Phases 1–3 stop being inert and start powering

@@ -59,3 +59,103 @@ def provider_text(combo, prompt, *, system_instruction,
                          key=combo["key"], model=combo["model"])
     return gemini_fn(prompt, system_instruction=system_instruction,
                      key=combo["key"], model=combo["model"])
+
+
+# ── Phase 4.5: provider-agnostic tool-turn adapters ──────────────────────────
+# Each takes neutral messages + tool specs, does ONE SDK round-trip, and returns
+# either {"text": str} or {"tool_calls": [{"id","name","args"}]}. These are the
+# translators the pure tool loop (tool_loop.run_tool_conversation) drives.
+
+
+def _specs_to_claude(specs):
+    return [{"name": s["name"], "description": s["description"],
+             "input_schema": s["input_schema"]} for s in specs]
+
+
+def _messages_to_claude(messages):
+    """Neutral messages -> Anthropic messages list."""
+    out = []
+    for m in messages:
+        content = []
+        for b in m["content"]:
+            if b["type"] == "text":
+                content.append({"type": "text", "text": b["text"]})
+            elif b["type"] == "tool_call":
+                content.append({"type": "tool_use", "id": b["id"],
+                                "name": b["name"], "input": b["args"]})
+            elif b["type"] == "tool_result":
+                content.append({"type": "tool_result", "tool_use_id": b["id"],
+                                "content": b["text"]})
+        out.append({"role": m["role"], "content": content})
+    return out
+
+
+def claude_tool_turn(messages, specs, *, key, model, system_instruction=None,
+                     base_url=None, max_tokens=1024, _client_factory=None):
+    """One Claude round-trip over the neutral tool protocol."""
+    if _client_factory is None:
+        import anthropic  # lazy: only when a Claude combo is actually used
+        _client_factory = anthropic.Anthropic
+    client = _client_factory(api_key=key, base_url=base_url)
+    kwargs = {"model": model, "max_tokens": max_tokens,
+              "tools": _specs_to_claude(specs),
+              "messages": _messages_to_claude(messages)}
+    if system_instruction:
+        kwargs["system"] = system_instruction
+    resp = client.messages.create(**kwargs)
+    tool_calls = [{"id": b.id, "name": b.name, "args": dict(b.input)}
+                  for b in resp.content if getattr(b, "type", None) == "tool_use"]
+    if tool_calls:
+        return {"tool_calls": tool_calls}
+    text = "".join(getattr(b, "text", "") for b in resp.content
+                   if getattr(b, "type", None) == "text")
+    return {"text": text}
+
+
+def _specs_to_gemini(specs):
+    """Neutral specs -> Gemini function declarations (dict form)."""
+    return [{"function_declarations": [
+        {"name": s["name"], "description": s["description"],
+         "parameters": s["input_schema"]} for s in specs]}]
+
+
+def _messages_to_gemini(messages):
+    """Neutral messages -> Gemini contents (role 'model' for assistant)."""
+    from google.generativeai import protos
+    contents = []
+    for m in messages:
+        role = "model" if m["role"] == "assistant" else "user"
+        parts = []
+        for b in m["content"]:
+            if b["type"] == "text":
+                parts.append(protos.Part(text=b["text"]))
+            elif b["type"] == "tool_call":
+                parts.append(protos.Part(function_call=protos.FunctionCall(
+                    name=b["name"], args=b["args"])))
+            elif b["type"] == "tool_result":
+                parts.append(protos.Part(function_response=protos.FunctionResponse(
+                    name=b["id"], response={"result": b["text"]})))
+        contents.append(protos.Content(role=role, parts=parts))
+    return contents
+
+
+def gemini_tool_turn(messages, specs, *, key, model, system_instruction=None,
+                     base_url=None, _model_factory=None):
+    """One Gemini round-trip over the neutral protocol (manual function calling)."""
+    if _model_factory is None:
+        genai.configure(api_key=key)
+        _model_factory = lambda: genai.GenerativeModel(
+            model_name=model, tools=_specs_to_gemini(specs),
+            system_instruction=system_instruction)
+    gmodel = _model_factory()
+    resp = gmodel.generate_content(_messages_to_gemini(messages),
+                                   request_options=_FAST_FAIL)
+    tool_calls = []
+    for part in resp.candidates[0].content.parts:
+        fc = getattr(part, "function_call", None)
+        if fc and fc.name:
+            tool_calls.append({"id": fc.name, "name": fc.name,
+                               "args": dict(fc.args)})
+    if tool_calls:
+        return {"tool_calls": tool_calls}
+    return {"text": resp.text}
