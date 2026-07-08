@@ -40,6 +40,7 @@ from src.data import levers as _lv
 st.session_state["weights"] = _lv.default_weights(st.session_state["active_levers"])
 r["sim_bad"] = tools.simulate_campaign("total_items", 10)
 r["sim_ok"] = tools.simulate_campaign("frequency", 10)
+r["target"] = tools.export_target_list(segment="power", limit=10)
 '''
 
 def run():
@@ -80,3 +81,6 @@ print("test_tools_canonical: search_users OK on canonical data")
 assert "error" in r["sim_bad"], "sim rejects a lever absent from this dataset"
 assert r["sim_ok"].get("conversions") is not None, f"sim ran on an active lever: {r['sim_ok']}"
 print("test_tools_canonical: simulate_campaign OK on canonical data")
+
+assert r["target"]["status"] in ("success", "no_results"), f"export failed: {r['target']}"
+print("test_tools_canonical: export_target_list OK on canonical data")
