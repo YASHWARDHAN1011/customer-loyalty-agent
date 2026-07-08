@@ -59,10 +59,12 @@ def run_scoring_analysis(top_percentile: int = 10) -> dict:
     if features is None:
         return {"error": "Data not loaded yet."}
 
+    from src.data import levers
+    active = st.session_state.get('active_levers') or levers.SCORING_LEVERS
     weights = st.session_state.get('weights')
-    if not weights:
-        from src.data import levers
-        active = st.session_state.get('active_levers') or levers.SCORING_LEVERS
+    if weights:
+        weights = levers.renormalize_weights(weights, active)
+    else:
         weights = levers.default_weights(active)
 
     scored = score_users(features, weights)
@@ -456,7 +458,6 @@ def get_user_profile(user_id: int) -> dict:
     scored = st.session_state.get('scored_df')
     power_user_ids = st.session_state.get('power_user_ids', set())
 
-    import numpy as np
     profile = {"user_id": int(user_id)}
     for c in tc.present_feature_cols(features):
         val = row[c]
@@ -753,8 +754,9 @@ def simulate_campaign(feature: str, lift_pct: float) -> dict:
     convert.
 
     Args:
-        feature: which feature to lift. One of: total_orders, reorder_rate,
-                 dept_diversity, avg_basket_size, total_items.
+        feature: which scoring lever to lift. Must be one of the dataset's
+                 active loyalty levers (the tool returns the valid list if the
+                 name is not recognized).
         lift_pct: percentage increase to apply (0-200), e.g. 15 for +15%.
     """
     features = st.session_state.get('features')
@@ -765,7 +767,8 @@ def simulate_campaign(feature: str, lift_pct: float) -> dict:
             "instruction": "Tell the user to load data / run scoring first.",
         }
 
-    active = st.session_state.get('active_levers') or simulation.LEVERS
+    from src.data import levers
+    active = st.session_state.get('active_levers') or levers.SCORING_LEVERS
     if feature not in active:
         return {
             "error": f"'{feature}' is not a simulatable lever for this dataset.",

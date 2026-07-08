@@ -62,6 +62,8 @@ print("test_tools_canonical: get_current_stats OK on canonical data")
 
 assert r["churn"]["status"] == "success", f"churn failed: {r['churn']}"
 assert "total_at_risk" in r["churn"], "churn: total_at_risk present"
+assert r["churn"].get("at_risk_avg_gap") is not None, \
+    "churn: at_risk_avg_gap populated via recency_days on canonical data"
 print("test_tools_canonical: analyze_churn_risk OK on canonical data")
 
 assert r["profile"]["status"] == "success", f"profile failed: {r['profile']}"
@@ -71,7 +73,8 @@ assert "frequency" in p, "profile: includes an available canonical feature"
 assert "total_orders" not in p, "profile: does not fabricate Instacart columns"
 print("test_tools_canonical: get_user_profile OK on canonical data")
 
-assert r["search"]["status"] in ("success", "no_results"), f"search failed: {r['search']}"
+assert r["search"]["status"] == "success", f"search failed: {r['search']}"
+assert r["search"]["total_matching"] >= 1, "search: at least one user matches min_orders=2"
 print("test_tools_canonical: search_users OK on canonical data")
 
 assert "error" in r["sim_bad"], "sim rejects a lever absent from this dataset"

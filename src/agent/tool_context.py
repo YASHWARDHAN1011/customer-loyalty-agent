@@ -18,7 +18,7 @@ _EXTRA_LABELS = {
     "loyalty_score": "Loyalty Score",
 }
 
-_NON_FEATURE = {"user_id"}
+_NON_FEATURE = {"user_id", "customer_id"}
 
 
 def feature_label(col):

@@ -31,6 +31,8 @@ ok(tc.feature_label("whatever_new") == "Whatever New", "fallback title-cases")
 
 ok("user_id" not in tc.present_feature_cols(canon), "present cols drop user_id")
 ok(tc.present_feature_cols(canon)[0] == "recency_days", "present cols keep frame order")
+canon2 = canon.assign(customer_id=[10, 20])
+ok("customer_id" not in tc.present_feature_cols(canon2), "present cols drop customer_id alias")
 
 ok(tc.order_count_col(canon) == "frequency", "canonical order count = frequency")
 ok(tc.order_count_col(insta) == "total_orders", "instacart order count = total_orders")
