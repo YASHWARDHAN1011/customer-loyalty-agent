@@ -765,12 +765,13 @@ def simulate_campaign(feature: str, lift_pct: float) -> dict:
             "instruction": "Tell the user to load data / run scoring first.",
         }
 
-    if feature not in simulation.LEVERS:
+    active = st.session_state.get('active_levers') or simulation.LEVERS
+    if feature not in active:
         return {
-            "error": f"'{feature}' is not a simulatable feature.",
+            "error": f"'{feature}' is not a simulatable lever for this dataset.",
             "instruction": (
-                "Tell the user simulation only supports these features: "
-                + ", ".join(simulation.LEVERS) + "."
+                "Tell the user simulation only supports these levers: "
+                + ", ".join(active) + "."
             ),
         }
 
@@ -782,7 +783,7 @@ def simulate_campaign(feature: str, lift_pct: float) -> dict:
 
     top_pct = st.session_state.get('top_pct', 10)
     result = simulation.simulate_campaign(
-        features, weights, top_pct, feature, lift_pct
+        features, weights, top_pct, feature, lift_pct, levers=active
     )
 
     pretty = feature.replace('_', ' ')
