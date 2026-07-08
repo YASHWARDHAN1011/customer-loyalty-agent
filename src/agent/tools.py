@@ -147,6 +147,14 @@ def run_segmentation() -> dict:
         }
 
     gaps = compute_segment_gaps(power, regular)
+    if not gaps:
+        return {
+            "status": "no_results",
+            "instruction": (
+                "Tell the user there are no comparable behavioral features in "
+                "this dataset to segment on."
+            ),
+        }
     compare_data = build_comparison_data(gaps)
 
     # Add grouped bar chart to chat
@@ -785,6 +793,8 @@ def simulate_campaign(feature: str, lift_pct: float) -> dict:
         }
 
     top_pct = st.session_state.get('top_pct', 10)
+    from src.data import levers
+    weights = levers.renormalize_weights(weights, active)
     result = simulation.simulate_campaign(
         features, weights, top_pct, feature, lift_pct, levers=active
     )

@@ -44,6 +44,8 @@ r["target"] = tools.export_target_list(segment="power", limit=10)
 r["interventions"] = tools.run_interventions()
 r["emails"] = tools.draft_campaign_emails()
 r["plan"] = tools.build_action_plan(20)
+r["segmentation"] = tools.run_segmentation()
+r["happy"] = tools.run_happy_path(3)
 '''
 
 def run():
@@ -93,3 +95,12 @@ assert r["interventions"]["campaigns_generated"] >= 1, "interventions produced c
 assert r["emails"]["status"] == "success", f"emails failed: {r['emails']}"
 assert r["plan"]["status"] == "success", f"plan failed: {r['plan']}"
 print("test_tools_canonical: interventions/emails/plan OK on canonical data")
+
+assert r["segmentation"]["status"] == "success", f"segmentation failed: {r['segmentation']}"
+assert r["segmentation"]["biggest_gap_feature"], "segmentation named a biggest-gap feature"
+print("test_tools_canonical: run_segmentation OK on canonical data")
+# run_happy_path needs product-level order_items (absent on orders-only data),
+# so it must DEGRADE cleanly (error/no_results), never crash.
+assert r["happy"].get("status") != "success" or "paths" in r["happy"], \
+    f"happy_path should degrade cleanly on orders-only data: {r['happy']}"
+print("test_tools_canonical: run_happy_path degrades cleanly on canonical data")
