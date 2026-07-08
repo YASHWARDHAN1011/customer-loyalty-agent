@@ -32,6 +32,7 @@ st.session_state.setdefault("ui_history", [])
 from src.agent import tools
 r = st.session_state.setdefault("_r", {})
 r["scoring"] = tools.run_scoring_analysis(50)   # 50% power split on tiny data
+r["stats"] = tools.get_current_stats()
 '''
 
 def run():
@@ -45,3 +46,9 @@ r = at.session_state["_r"]
 assert r["scoring"]["status"] == "success", f"scoring failed: {r['scoring']}"
 assert r["scoring"]["power_user_count"] >= 1, "scoring produced power users on canonical data"
 print("test_tools_canonical: run_scoring_analysis OK on canonical data")
+
+assert r["stats"]["data_loaded"] is True, "stats: data_loaded"
+assert r["stats"]["scoring_complete"] is True, "stats: scoring done after scoring call"
+assert isinstance(r["stats"].get("metrics"), dict) and r["stats"]["metrics"], \
+    "stats: metrics dict computed over available features"
+print("test_tools_canonical: get_current_stats OK on canonical data")

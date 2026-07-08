@@ -37,6 +37,7 @@ from src.agent.deliverables import (
     campaign_emails_markdown, action_plan_markdown,
 )
 from src.agent import memory
+from src.agent import tool_context as tc
 
 
 def run_scoring_analysis(top_percentile: int = 10) -> dict:
@@ -278,12 +279,7 @@ def get_current_stats() -> dict:
     result = {
         "data_loaded": True,
         "total_users": int(features['user_id'].nunique()),
-        "avg_orders_per_user": round(
-            float(features['total_orders'].mean()), 1
-        ),
-        "avg_reorder_rate": round(
-            float(features['reorder_rate'].mean()), 3
-        ),
+        "metrics": tc.summary_stats(features),
         "scoring_complete": scored is not None,
         "segmentation_complete": power is not None,
         "happy_path_complete": 'paths' in st.session_state
