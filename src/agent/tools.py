@@ -58,13 +58,11 @@ def run_scoring_analysis(top_percentile: int = 10) -> dict:
     if features is None:
         return {"error": "Data not loaded yet."}
 
-    weights = st.session_state.get('weights', {
-        'total_orders': 0.30,
-        'reorder_rate': 0.25,
-        'dept_diversity': 0.20,
-        'avg_basket_size': 0.15,
-        'total_items': 0.10
-    })
+    weights = st.session_state.get('weights')
+    if not weights:
+        from src.data import levers
+        active = st.session_state.get('active_levers') or levers.SCORING_LEVERS
+        weights = levers.default_weights(active)
 
     scored = score_users(features, weights)
     power, regular, cutoff = get_power_users(
