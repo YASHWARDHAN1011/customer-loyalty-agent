@@ -41,6 +41,9 @@ st.session_state["weights"] = _lv.default_weights(st.session_state["active_lever
 r["sim_bad"] = tools.simulate_campaign("total_items", 10)
 r["sim_ok"] = tools.simulate_campaign("frequency", 10)
 r["target"] = tools.export_target_list(segment="power", limit=10)
+r["interventions"] = tools.run_interventions()
+r["emails"] = tools.draft_campaign_emails()
+r["plan"] = tools.build_action_plan(20)
 '''
 
 def run():
@@ -84,3 +87,9 @@ print("test_tools_canonical: simulate_campaign OK on canonical data")
 
 assert r["target"]["status"] in ("success", "no_results"), f"export failed: {r['target']}"
 print("test_tools_canonical: export_target_list OK on canonical data")
+
+assert r["interventions"]["status"] == "success", f"interventions failed: {r['interventions']}"
+assert r["interventions"]["campaigns_generated"] >= 1, "interventions produced content on canonical levers"
+assert r["emails"]["status"] == "success", f"emails failed: {r['emails']}"
+assert r["plan"]["status"] == "success", f"plan failed: {r['plan']}"
+print("test_tools_canonical: interventions/emails/plan OK on canonical data")

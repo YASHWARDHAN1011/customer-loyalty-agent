@@ -8,6 +8,7 @@ and call these.
 
 import pandas as pd
 from src.agent import tool_context as tc
+from src.analysis.interventions import template_for
 
 
 def select_target_users(features, scored_df, power_user_ids,
@@ -59,9 +60,9 @@ def campaign_emails_markdown(gaps, templates, max_campaigns=4) -> str:
     out = "# Campaign Email Drafts\n\n"
     shown = 0
     for gap_pct, col, ru_avg, pu_avg in gaps:
-        if shown >= max_campaigns or col not in templates:
+        if shown >= max_campaigns:
             continue
-        t = templates[col]
+        t = template_for(col, templates)
         out += f"## {t['title']}  ({gap_pct:.0f}% gap)\n\n"
         out += f"**Subject:** {t['title']} — a little something for you\n\n"
         out += (
@@ -90,9 +91,9 @@ def action_plan_markdown(gaps, templates, at_risk_count,
     )
     shown = 0
     for gap_pct, col, ru_avg, pu_avg in gaps:
-        if shown >= max_items or col not in templates:
+        if shown >= max_items:
             continue
-        t = templates[col]
+        t = template_for(col, templates)
         out += (
             f"- [ ] **{t['title']}** — close the {gap_pct:.0f}% gap. "
             f"{t['action']} "

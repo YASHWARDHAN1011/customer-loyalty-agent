@@ -26,7 +26,7 @@ import numpy as np
 from src.analysis.scoring import score_users, get_power_users, get_thresholds
 from src.analysis.happy_path import get_happy_paths
 from src.analysis.segmentation import compute_segment_gaps, build_comparison_data
-from src.analysis.interventions import INTERVENTION_TEMPLATES, compute_intervention_gaps
+from src.analysis.interventions import INTERVENTION_TEMPLATES, compute_intervention_gaps, template_for
 from src.analysis.metrics import calculate_churn_risk
 from src.analysis import simulation
 
@@ -321,9 +321,9 @@ def run_interventions() -> dict:
     shown = 0
 
     for gap_pct, col, ru_avg, pu_avg in gaps:
-        if shown >= 4 or col not in INTERVENTION_TEMPLATES:
+        if shown >= 4:
             continue
-        t = INTERVENTION_TEMPLATES[col]
+        t = template_for(col)
         mid = (ru_avg + pu_avg) / 2
         features_col = st.session_state['features'][col]
         count = int((features_col < mid).sum())
