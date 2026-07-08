@@ -456,16 +456,15 @@ def get_user_profile(user_id: int) -> dict:
     scored = st.session_state.get('scored_df')
     power_user_ids = st.session_state.get('power_user_ids', set())
 
-    profile = {
-        "user_id": int(user_id),
-        "total_orders": int(row['total_orders']),
-        "avg_days_between_orders": round(float(row['avg_days_between_orders']), 1),
-        "reorder_rate": round(float(row['reorder_rate']), 3),
-        "dept_diversity": int(row['dept_diversity']),
-        "avg_basket_size": round(float(row['avg_basket_size']), 1),
-        "total_items": int(row['total_items']),
-        "segment": "Power User" if user_id in power_user_ids else "Regular User"
-    }
+    import numpy as np
+    profile = {"user_id": int(user_id)}
+    for c in tc.present_feature_cols(features):
+        val = row[c]
+        if isinstance(val, (int, float, np.integer, np.floating)):
+            profile[c] = round(float(val), 3)
+        else:
+            profile[c] = str(val)
+    profile["segment"] = "Power User" if user_id in power_user_ids else "Regular User"
 
     if scored is not None:
         score_row = scored[scored['user_id'] == user_id]
@@ -476,7 +475,8 @@ def get_user_profile(user_id: int) -> dict:
 
     import pandas as pd
     profile_df = pd.DataFrame([{
-        "Field": k.replace('_', ' ').title(),
+        "Field": tc.feature_label(k) if k not in ("user_id", "segment")
+                 else k.replace('_', ' ').title(),
         "Value": str(v)
     } for k, v in profile.items()])
 

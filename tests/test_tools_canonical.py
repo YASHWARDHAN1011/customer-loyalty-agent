@@ -34,6 +34,7 @@ r = st.session_state.setdefault("_r", {})
 r["scoring"] = tools.run_scoring_analysis(50)   # 50% power split on tiny data
 r["stats"] = tools.get_current_stats()
 r["churn"] = tools.analyze_churn_risk(20)
+r["profile"] = tools.get_user_profile(1)
 '''
 
 def run():
@@ -57,3 +58,10 @@ print("test_tools_canonical: get_current_stats OK on canonical data")
 assert r["churn"]["status"] == "success", f"churn failed: {r['churn']}"
 assert "total_at_risk" in r["churn"], "churn: total_at_risk present"
 print("test_tools_canonical: analyze_churn_risk OK on canonical data")
+
+assert r["profile"]["status"] == "success", f"profile failed: {r['profile']}"
+p = r["profile"]["profile"]
+assert p["user_id"] == 1 and "segment" in p, "profile: id + segment"
+assert "frequency" in p, "profile: includes an available canonical feature"
+assert "total_orders" not in p, "profile: does not fabricate Instacart columns"
+print("test_tools_canonical: get_user_profile OK on canonical data")
