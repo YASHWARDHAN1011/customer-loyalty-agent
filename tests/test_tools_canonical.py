@@ -35,6 +35,7 @@ r["scoring"] = tools.run_scoring_analysis(50)   # 50% power split on tiny data
 r["stats"] = tools.get_current_stats()
 r["churn"] = tools.analyze_churn_risk(20)
 r["profile"] = tools.get_user_profile(1)
+r["search"] = tools.search_users(min_orders=2, limit=5)
 '''
 
 def run():
@@ -65,3 +66,6 @@ assert p["user_id"] == 1 and "segment" in p, "profile: id + segment"
 assert "frequency" in p, "profile: includes an available canonical feature"
 assert "total_orders" not in p, "profile: does not fabricate Instacart columns"
 print("test_tools_canonical: get_user_profile OK on canonical data")
+
+assert r["search"]["status"] in ("success", "no_results"), f"search failed: {r['search']}"
+print("test_tools_canonical: search_users OK on canonical data")

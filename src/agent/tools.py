@@ -536,13 +536,14 @@ def search_users(
             scored[['user_id', 'loyalty_score']], on='user_id', how='left'
         )
 
-    if min_orders is not None:
-        df = df[df['total_orders'] >= min_orders]
-    if max_orders is not None:
-        df = df[df['total_orders'] <= max_orders]
-    if min_reorder_rate is not None:
+    order_col = tc.order_count_col(df)
+    if min_orders is not None and order_col:
+        df = df[df[order_col] >= min_orders]
+    if max_orders is not None and order_col:
+        df = df[df[order_col] <= max_orders]
+    if min_reorder_rate is not None and 'reorder_rate' in df.columns:
         df = df[df['reorder_rate'] >= min_reorder_rate]
-    if max_reorder_rate is not None:
+    if max_reorder_rate is not None and 'reorder_rate' in df.columns:
         df = df[df['reorder_rate'] <= max_reorder_rate]
     if segment is not None:
         seg_lower = segment.lower()
@@ -564,9 +565,10 @@ def search_users(
         lambda uid: 'Power User' if uid in power_user_ids else 'Regular User'
     )
 
-    display_cols = ['user_id', 'total_orders', 'reorder_rate',
-                    'dept_diversity', 'avg_basket_size', 'segment']
-    if 'loyalty_score' in result.columns:
+    feat_cols = [c for c in tc.present_feature_cols(features)
+                 if c in result.columns][:5]
+    display_cols = ['user_id'] + feat_cols + ['segment']
+    if 'loyalty_score' in result.columns and 'loyalty_score' not in display_cols:
         display_cols.insert(-1, 'loyalty_score')
 
     import pandas as pd
@@ -583,8 +585,10 @@ def search_users(
         "status": "success",
         "total_matching": len(df),
         "showing": len(result),
-        "avg_orders": round(float(df['total_orders'].mean()), 1),
-        "avg_reorder_rate": round(float(df['reorder_rate'].mean()), 3),
+        "avg_orders": (round(float(df[order_col].mean()), 1)
+                       if order_col and len(df) else None),
+        "avg_reorder_rate": (round(float(df['reorder_rate'].mean()), 3)
+                             if 'reorder_rate' in df.columns and len(df) else None),
         "instruction": (
             "Summarize who these users are in 1-2 sentences. "
             "Note any interesting patterns in the results."
