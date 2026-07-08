@@ -33,6 +33,7 @@ from src.agent import tools
 r = st.session_state.setdefault("_r", {})
 r["scoring"] = tools.run_scoring_analysis(50)   # 50% power split on tiny data
 r["stats"] = tools.get_current_stats()
+r["churn"] = tools.analyze_churn_risk(20)
 '''
 
 def run():
@@ -52,3 +53,7 @@ assert r["stats"]["scoring_complete"] is True, "stats: scoring done after scorin
 assert isinstance(r["stats"].get("metrics"), dict) and r["stats"]["metrics"], \
     "stats: metrics dict computed over available features"
 print("test_tools_canonical: get_current_stats OK on canonical data")
+
+assert r["churn"]["status"] == "success", f"churn failed: {r['churn']}"
+assert "total_at_risk" in r["churn"], "churn: total_at_risk present"
+print("test_tools_canonical: analyze_churn_risk OK on canonical data")

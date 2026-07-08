@@ -360,6 +360,23 @@ def run_interventions() -> dict:
     }
 
 
+def _at_risk_gap_line(at_risk):
+    """One markdown line describing the at-risk group's churn signal, or ''."""
+    col = tc.churn_gap_col(at_risk)
+    if not col or len(at_risk) == 0:
+        return ""
+    return (f"- At-risk avg {tc.feature_label(col).lower()}: "
+            f"**{at_risk[col].mean():.0f}**\n")
+
+
+def _at_risk_gap_value(at_risk):
+    """Numeric at-risk churn-signal average, or None if not computable."""
+    col = tc.churn_gap_col(at_risk)
+    if not col or len(at_risk) == 0:
+        return None
+    return round(float(at_risk[col].mean()), 1)
+
+
 def analyze_churn_risk(churn_days: int = 30) -> dict:
     """
     Identifies customers at risk of churning based on how long
@@ -391,9 +408,7 @@ def analyze_churn_risk(churn_days: int = 30) -> dict:
         f"({len(at_risk)/total*100:.1f}% of all users)\n"
         f"- **{len(at_risk_power):,}** are power users "
         f"(high-value churn risk)\n"
-        f"- At-risk avg gap: "
-        f"**{at_risk['avg_days_between_orders'].mean():.0f} days** "
-        f"between orders\n"
+        f"{_at_risk_gap_line(at_risk)}"
     )
 
     st.session_state.ui_history.append({
@@ -408,9 +423,7 @@ def analyze_churn_risk(churn_days: int = 30) -> dict:
         "total_at_risk": len(at_risk),
         "at_risk_pct": round(len(at_risk) / total * 100, 1),
         "at_risk_power_users": len(at_risk_power),
-        "at_risk_avg_gap_days": round(
-            float(at_risk['avg_days_between_orders'].mean()), 1
-        ),
+        "at_risk_avg_gap": _at_risk_gap_value(at_risk),
         "instruction": (
             "Give 2 insights: how urgent is the power-user churn risk, "
             "and what win-back action should they take immediately. "
