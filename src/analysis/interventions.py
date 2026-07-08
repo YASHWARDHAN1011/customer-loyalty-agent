@@ -61,20 +61,74 @@ INTERVENTION_TEMPLATES = {
 }
 
 
-def compute_intervention_gaps(power, regular):
+from src.data.levers import LEVER_LABELS
+
+
+def template_for(col, templates=None):
+    """Return a campaign template for a feature column.
+
+    Uses the hand-authored INTERVENTION_TEMPLATES when one exists, else a generic
+    template built from the lever's label so campaigns/emails/action-plans work on
+    any dataset's levers (not just the Instacart columns).
     """
-    Calculate behavioral gaps for intervention targeting.
+    templates = INTERVENTION_TEMPLATES if templates is None else templates
+    if col in templates:
+        return templates[col]
+    label = LEVER_LABELS.get(col, col.replace("_", " ").title())
+    low = label.lower()
+    return {
+        "icon": "📈",
+        "title": f"Grow {label}",
+        "what": f"Power users show markedly higher {low} than regular customers.",
+        "who": "Target {count} regular users below the midpoint.",
+        "action": f"Run a campaign that nudges customers to increase their {low}.",
+        "message": f"A small lift in {low} moves regulars toward power-user value.",
+    }
+
+
+_PREFERRED_COLS = [
+    'total_orders', 'reorder_rate',
+    'dept_diversity', 'avg_basket_size',
+    'avg_days_between_orders',
+]
+
+_NON_FEATURE = {'user_id', 'customer_id', 'loyalty_score', 'raw_score',
+                'segment', 'recency_days'}
+
+
+def compute_intervention_gaps(power, regular):
+    """Calculate behavioral gaps for intervention targeting.
+
+    Column-agnostic: prefers the hand-curated Instacart column order when those
+    columns exist, then falls back to any numeric feature present in both frames
+    (skipping id / score / churn-direction columns). This lets the function work on
+    any dataset's levers, not just the original Instacart ones.
 
     Returns sorted list of (gap_pct, col, ru_avg, pu_avg) tuples.
     """
+    common = set(power.columns) & set(regular.columns)
+    # Build candidate list: preferred first (in order), then remaining numerics.
+    seen = set()
+    candidates = []
+    for col in _PREFERRED_COLS:
+        if col in common:
+            candidates.append(col)
+            seen.add(col)
+    for col in power.columns:
+        if col in common and col not in seen and col not in _NON_FEATURE:
+            try:
+                power[col].mean()  # numeric check
+                candidates.append(col)
+            except TypeError:
+                pass
+
     gaps = []
-    for col in [
-        'total_orders', 'reorder_rate',
-        'dept_diversity', 'avg_basket_size',
-        'avg_days_between_orders'
-    ]:
-        pu_avg = float(power[col].mean())
-        ru_avg = float(regular[col].mean())
+    for col in candidates:
+        try:
+            pu_avg = float(power[col].mean())
+            ru_avg = float(regular[col].mean())
+        except (TypeError, ValueError):
+            continue
         if ru_avg > 0.001:
             gap = ((pu_avg - ru_avg) / ru_avg) * 100
             gaps.append((gap, col, ru_avg, pu_avg))

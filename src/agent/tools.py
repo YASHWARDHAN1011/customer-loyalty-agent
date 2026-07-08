@@ -26,7 +26,7 @@ import numpy as np
 from src.analysis.scoring import score_users, get_power_users, get_thresholds
 from src.analysis.happy_path import get_happy_paths
 from src.analysis.segmentation import compute_segment_gaps, build_comparison_data
-from src.analysis.interventions import INTERVENTION_TEMPLATES, compute_intervention_gaps
+from src.analysis.interventions import INTERVENTION_TEMPLATES, compute_intervention_gaps, template_for
 from src.analysis.metrics import calculate_churn_risk
 from src.analysis import simulation
 
@@ -37,6 +37,7 @@ from src.agent.deliverables import (
     campaign_emails_markdown, action_plan_markdown,
 )
 from src.agent import memory
+from src.agent import tool_context as tc
 
 
 def run_scoring_analysis(top_percentile: int = 10) -> dict:
@@ -58,13 +59,13 @@ def run_scoring_analysis(top_percentile: int = 10) -> dict:
     if features is None:
         return {"error": "Data not loaded yet."}
 
-    weights = st.session_state.get('weights', {
-        'total_orders': 0.30,
-        'reorder_rate': 0.25,
-        'dept_diversity': 0.20,
-        'avg_basket_size': 0.15,
-        'total_items': 0.10
-    })
+    from src.data import levers
+    active = st.session_state.get('active_levers') or levers.SCORING_LEVERS
+    weights = st.session_state.get('weights')
+    if weights:
+        weights = levers.renormalize_weights(weights, active)
+    else:
+        weights = levers.default_weights(active)
 
     scored = score_users(features, weights)
     power, regular, cutoff = get_power_users(
@@ -146,6 +147,14 @@ def run_segmentation() -> dict:
         }
 
     gaps = compute_segment_gaps(power, regular)
+    if not gaps:
+        return {
+            "status": "no_results",
+            "instruction": (
+                "Tell the user there are no comparable behavioral features in "
+                "this dataset to segment on."
+            ),
+        }
     compare_data = build_comparison_data(gaps)
 
     # Add grouped bar chart to chat
@@ -280,12 +289,7 @@ def get_current_stats() -> dict:
     result = {
         "data_loaded": True,
         "total_users": int(features['user_id'].nunique()),
-        "avg_orders_per_user": round(
-            float(features['total_orders'].mean()), 1
-        ),
-        "avg_reorder_rate": round(
-            float(features['reorder_rate'].mean()), 3
-        ),
+        "metrics": tc.summary_stats(features),
         "scoring_complete": scored is not None,
         "segmentation_complete": power is not None,
         "happy_path_complete": 'paths' in st.session_state
@@ -325,9 +329,9 @@ def run_interventions() -> dict:
     shown = 0
 
     for gap_pct, col, ru_avg, pu_avg in gaps:
-        if shown >= 4 or col not in INTERVENTION_TEMPLATES:
+        if shown >= 4:
             continue
-        t = INTERVENTION_TEMPLATES[col]
+        t = template_for(col)
         mid = (ru_avg + pu_avg) / 2
         features_col = st.session_state['features'][col]
         count = int((features_col < mid).sum())
@@ -366,6 +370,23 @@ def run_interventions() -> dict:
     }
 
 
+def _at_risk_gap_line(at_risk):
+    """One markdown line describing the at-risk group's churn signal, or ''."""
+    col = tc.churn_gap_col(at_risk)
+    if not col or len(at_risk) == 0:
+        return ""
+    return (f"- At-risk avg {tc.feature_label(col).lower()}: "
+            f"**{at_risk[col].mean():.0f}**\n")
+
+
+def _at_risk_gap_value(at_risk):
+    """Numeric at-risk churn-signal average, or None if not computable."""
+    col = tc.churn_gap_col(at_risk)
+    if not col or len(at_risk) == 0:
+        return None
+    return round(float(at_risk[col].mean()), 1)
+
+
 def analyze_churn_risk(churn_days: int = 30) -> dict:
     """
     Identifies customers at risk of churning based on how long
@@ -397,9 +418,7 @@ def analyze_churn_risk(churn_days: int = 30) -> dict:
         f"({len(at_risk)/total*100:.1f}% of all users)\n"
         f"- **{len(at_risk_power):,}** are power users "
         f"(high-value churn risk)\n"
-        f"- At-risk avg gap: "
-        f"**{at_risk['avg_days_between_orders'].mean():.0f} days** "
-        f"between orders\n"
+        f"{_at_risk_gap_line(at_risk)}"
     )
 
     st.session_state.ui_history.append({
@@ -414,9 +433,7 @@ def analyze_churn_risk(churn_days: int = 30) -> dict:
         "total_at_risk": len(at_risk),
         "at_risk_pct": round(len(at_risk) / total * 100, 1),
         "at_risk_power_users": len(at_risk_power),
-        "at_risk_avg_gap_days": round(
-            float(at_risk['avg_days_between_orders'].mean()), 1
-        ),
+        "at_risk_avg_gap": _at_risk_gap_value(at_risk),
         "instruction": (
             "Give 2 insights: how urgent is the power-user churn risk, "
             "and what win-back action should they take immediately. "
@@ -449,16 +466,14 @@ def get_user_profile(user_id: int) -> dict:
     scored = st.session_state.get('scored_df')
     power_user_ids = st.session_state.get('power_user_ids', set())
 
-    profile = {
-        "user_id": int(user_id),
-        "total_orders": int(row['total_orders']),
-        "avg_days_between_orders": round(float(row['avg_days_between_orders']), 1),
-        "reorder_rate": round(float(row['reorder_rate']), 3),
-        "dept_diversity": int(row['dept_diversity']),
-        "avg_basket_size": round(float(row['avg_basket_size']), 1),
-        "total_items": int(row['total_items']),
-        "segment": "Power User" if user_id in power_user_ids else "Regular User"
-    }
+    profile = {"user_id": int(user_id)}
+    for c in tc.present_feature_cols(features):
+        val = row[c]
+        if isinstance(val, (int, float, np.integer, np.floating)):
+            profile[c] = round(float(val), 3)
+        else:
+            profile[c] = str(val)
+    profile["segment"] = "Power User" if user_id in power_user_ids else "Regular User"
 
     if scored is not None:
         score_row = scored[scored['user_id'] == user_id]
@@ -469,7 +484,8 @@ def get_user_profile(user_id: int) -> dict:
 
     import pandas as pd
     profile_df = pd.DataFrame([{
-        "Field": k.replace('_', ' ').title(),
+        "Field": tc.feature_label(k) if k not in ("user_id", "segment")
+                 else k.replace('_', ' ').title(),
         "Value": str(v)
     } for k, v in profile.items()])
 
@@ -529,13 +545,14 @@ def search_users(
             scored[['user_id', 'loyalty_score']], on='user_id', how='left'
         )
 
-    if min_orders is not None:
-        df = df[df['total_orders'] >= min_orders]
-    if max_orders is not None:
-        df = df[df['total_orders'] <= max_orders]
-    if min_reorder_rate is not None:
+    order_col = tc.order_count_col(df)
+    if min_orders is not None and order_col:
+        df = df[df[order_col] >= min_orders]
+    if max_orders is not None and order_col:
+        df = df[df[order_col] <= max_orders]
+    if min_reorder_rate is not None and 'reorder_rate' in df.columns:
         df = df[df['reorder_rate'] >= min_reorder_rate]
-    if max_reorder_rate is not None:
+    if max_reorder_rate is not None and 'reorder_rate' in df.columns:
         df = df[df['reorder_rate'] <= max_reorder_rate]
     if segment is not None:
         seg_lower = segment.lower()
@@ -557,9 +574,10 @@ def search_users(
         lambda uid: 'Power User' if uid in power_user_ids else 'Regular User'
     )
 
-    display_cols = ['user_id', 'total_orders', 'reorder_rate',
-                    'dept_diversity', 'avg_basket_size', 'segment']
-    if 'loyalty_score' in result.columns:
+    feat_cols = [c for c in tc.present_feature_cols(features)
+                 if c in result.columns][:5]
+    display_cols = ['user_id'] + feat_cols + ['segment']
+    if 'loyalty_score' in result.columns and 'loyalty_score' not in display_cols:
         display_cols.insert(-1, 'loyalty_score')
 
     import pandas as pd
@@ -576,8 +594,10 @@ def search_users(
         "status": "success",
         "total_matching": len(df),
         "showing": len(result),
-        "avg_orders": round(float(df['total_orders'].mean()), 1),
-        "avg_reorder_rate": round(float(df['reorder_rate'].mean()), 3),
+        "avg_orders": (round(float(df[order_col].mean()), 1)
+                       if order_col and len(df) else None),
+        "avg_reorder_rate": (round(float(df['reorder_rate'].mean()), 3)
+                             if 'reorder_rate' in df.columns and len(df) else None),
         "instruction": (
             "Summarize who these users are in 1-2 sentences. "
             "Note any interesting patterns in the results."
@@ -742,8 +762,9 @@ def simulate_campaign(feature: str, lift_pct: float) -> dict:
     convert.
 
     Args:
-        feature: which feature to lift. One of: total_orders, reorder_rate,
-                 dept_diversity, avg_basket_size, total_items.
+        feature: which scoring lever to lift. Must be one of the dataset's
+                 active loyalty levers (the tool returns the valid list if the
+                 name is not recognized).
         lift_pct: percentage increase to apply (0-200), e.g. 15 for +15%.
     """
     features = st.session_state.get('features')
@@ -754,12 +775,14 @@ def simulate_campaign(feature: str, lift_pct: float) -> dict:
             "instruction": "Tell the user to load data / run scoring first.",
         }
 
-    if feature not in simulation.LEVERS:
+    from src.data import levers
+    active = st.session_state.get('active_levers') or levers.SCORING_LEVERS
+    if feature not in active:
         return {
-            "error": f"'{feature}' is not a simulatable feature.",
+            "error": f"'{feature}' is not a simulatable lever for this dataset.",
             "instruction": (
-                "Tell the user simulation only supports these features: "
-                + ", ".join(simulation.LEVERS) + "."
+                "Tell the user simulation only supports these levers: "
+                + ", ".join(active) + "."
             ),
         }
 
@@ -770,8 +793,10 @@ def simulate_campaign(feature: str, lift_pct: float) -> dict:
         }
 
     top_pct = st.session_state.get('top_pct', 10)
+    from src.data import levers
+    weights = levers.renormalize_weights(weights, active)
     result = simulation.simulate_campaign(
-        features, weights, top_pct, feature, lift_pct
+        features, weights, top_pct, feature, lift_pct, levers=active
     )
 
     pretty = feature.replace('_', ' ')

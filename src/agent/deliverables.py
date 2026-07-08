@@ -7,11 +7,8 @@ and call these.
 """
 
 import pandas as pd
-
-_TARGET_COLS = [
-    'user_id', 'total_orders', 'reorder_rate',
-    'dept_diversity', 'avg_basket_size', 'segment',
-]
+from src.agent import tool_context as tc
+from src.analysis.interventions import template_for
 
 
 def select_target_users(features, scored_df, power_user_ids,
@@ -19,18 +16,20 @@ def select_target_users(features, scored_df, power_user_ids,
                         churn_days=None, limit=500):
     """Filter the feature matrix into a target list DataFrame.
 
-    Mirrors the filter logic used by search_users / churn analysis so the
-    exported list matches what the user sees in the app.
+    Column-agnostic: filters use the dataset's resolved order-count / churn
+    columns and the export includes whatever features are present.
     """
     df = features.copy()
     if scored_df is not None:
         df = df.merge(
             scored_df[['user_id', 'loyalty_score']], on='user_id', how='left'
         )
-    if min_orders is not None:
-        df = df[df['total_orders'] >= min_orders]
-    if churn_days is not None and 'avg_days_between_orders' in df.columns:
-        df = df[df['avg_days_between_orders'] >= churn_days]
+    order_col = tc.order_count_col(df)
+    if min_orders is not None and order_col:
+        df = df[df[order_col] >= min_orders]
+    gap_col = tc.churn_gap_col(df)
+    if churn_days is not None and gap_col:
+        df = df[df[gap_col] >= churn_days]
     if segment is not None:
         s = str(segment).lower()
         if 'power' in s:
@@ -42,9 +41,8 @@ def select_target_users(features, scored_df, power_user_ids,
     df['segment'] = df['user_id'].apply(
         lambda u: 'Power User' if u in power_user_ids else 'Regular User'
     )
-    cols = list(_TARGET_COLS)
-    if 'loyalty_score' in df.columns:
-        cols.insert(-1, 'loyalty_score')
+    feat_cols = [c for c in tc.present_feature_cols(df) if c != 'segment']
+    cols = ['user_id'] + [c for c in feat_cols if c != 'user_id'] + ['segment']
     return df[cols].head(int(limit)).round(3).reset_index(drop=True)
 
 
@@ -62,9 +60,9 @@ def campaign_emails_markdown(gaps, templates, max_campaigns=4) -> str:
     out = "# Campaign Email Drafts\n\n"
     shown = 0
     for gap_pct, col, ru_avg, pu_avg in gaps:
-        if shown >= max_campaigns or col not in templates:
+        if shown >= max_campaigns:
             continue
-        t = templates[col]
+        t = template_for(col, templates)
         out += f"## {t['title']}  ({gap_pct:.0f}% gap)\n\n"
         out += f"**Subject:** {t['title']} — a little something for you\n\n"
         out += (
@@ -93,9 +91,9 @@ def action_plan_markdown(gaps, templates, at_risk_count,
     )
     shown = 0
     for gap_pct, col, ru_avg, pu_avg in gaps:
-        if shown >= max_items or col not in templates:
+        if shown >= max_items:
             continue
-        t = templates[col]
+        t = template_for(col, templates)
         out += (
             f"- [ ] **{t['title']}** — close the {gap_pct:.0f}% gap. "
             f"{t['action']} "

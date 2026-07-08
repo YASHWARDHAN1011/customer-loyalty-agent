@@ -10,6 +10,46 @@ This file has two jobs:
 
 ## 📓 Project Journal
 
+### 2026-07-07 — Intelligence Layer / Chat-First, Phase 5: Re-anchor agent tools on canonical levers
+Closes the big Phase-4 caveat ("agent tools still Instacart-bound"). The analysis
+engine already ran on any dataset; now the **agent's tools** do too. Before this,
+asking the chat to "score customers", "show me user 123", or "export a target
+list" on a client's canonical data threw `KeyError` on hardcoded Instacart columns.
+Now every tool reads whatever features the dataset actually has.
+- **`src/agent/tool_context.py`** (NEW, pure): the single place tools resolve
+  columns — `feature_label`, `present_feature_cols` (drops the `user_id`/
+  `customer_id` ids), `order_count_col` (`total_orders`→`frequency`), `churn_gap_col`
+  (`recency_days`→`avg_days_between_orders`), `summary_stats`.
+- **`src/agent/tools.py`** — re-anchored 6 tools: `run_scoring_analysis` builds
+  default weights from the dataset's `active_levers` and renormalizes any stale
+  session weights (drops Instacart keys); `get_current_stats` summarizes available
+  features; `analyze_churn_risk` reports the resolved churn column; `get_user_profile`
+  builds from present features; `search_users` filters/displays resolved columns;
+  `simulate_campaign` validates against `active_levers` (and its docstring — the
+  schema Gemini reads — no longer lists dead Instacart levers).
+- **`src/agent/deliverables.py`** — `select_target_users` exports whatever features
+  exist (no fixed `_TARGET_COLS`); email/action-plan builders use the generic
+  template fallback.
+- **`src/analysis/interventions.py`** — `template_for(col)` returns the hand-authored
+  template when one exists else a generic label-driven one, so campaigns/emails/
+  plans produce content on ANY levers; `compute_intervention_gaps` is now
+  column-agnostic (prefers the curated order, falls back to numeric levers,
+  excludes ids/score/churn-direction).
+- **`src/config.py`** — `SYSTEM_PROMPT` is dataset-agnostic: no "Instacart /
+  206,209 customers / departments", and it tells the model features vary and to
+  relay unavailability rather than invent numbers.
+- **Trust invariant held:** tools compute real numbers or say a feature is
+  unavailable — never a crash, never a fabricated figure. Scope was **minimal**
+  (generic campaign copy; no hand-authored per-lever e-commerce templates yet).
+- **Testing (new pattern):** `tests/test_tools_canonical.py` runs the real tools on
+  an orders-only canonical dataset via `AppTest.from_string` (a real Streamlit
+  runtime, so `st.session_state` works) and asserts zero exceptions + correct
+  behavior — the first suite that exercises tools on data, not stubs. Plus
+  `test_tool_context.py` (15) and `test_interventions_generic.py` (4) and
+  `test_system_prompt.py` (7). All 25 no-network suites green; app boots 0 exceptions.
+- Default Instacart-demo behavior is unchanged (the demo's canonical artifacts
+  already use the canonical column names).
+
 ### 2026-07-07 — Expand Gemini model buckets (more free-tier headroom)
 Refreshed `config.MODELS` from the aging 2.0-era list to current models, ordered
 best-first: `gemini-2.5-flash`, `-flash-lite`, `gemini-3.5-flash`,
