@@ -3,7 +3,7 @@ st.set_page_config(page_title="Customer Loyalty", layout="wide", page_icon="🛒
 
 from src.ui.renderer import apply_theme
 from src.data.app_data import load_demo_app_data
-from src.data.levers import default_weights
+from src.ui.dataset import set_active_dataset
 from src.ui.sidebar import render_sidebar
 from src.analysis.scoring import score_users, get_power_users, get_thresholds
 from src.config import MODEL_ARSENAL
@@ -18,6 +18,29 @@ from src.utils.persistence import load_session
 from src.agent.watches import load_watches, evaluate_watches
 
 apply_theme()
+
+# --- Active dataset (demo on first boot; upload/back-to-demo swap it) ---
+if "dataset_source" not in st.session_state:
+    orders, order_items, features, available, active_levers = load_demo_app_data()
+    set_active_dataset(
+        st.session_state, orders=orders, order_items=order_items,
+        features=features, available=available, active_levers=active_levers,
+        label="Instacart", source="demo",
+    )
+
+# Remaining non-dataset defaults (dataset keys + weights are set above).
+defaults = {
+    'chat_history': [], 'ui_history': [], 'model_idx': 0, 'top_pct': 10,
+    'artifacts': [],
+    'active_model': MODEL_ARSENAL[0]['label'] if MODEL_ARSENAL else 'None',
+}
+for k, v in defaults.items():
+    if k not in st.session_state: st.session_state[k] = v
+
+# Read the active dataset from session_state for the rest of the script.
+features = st.session_state['features']
+orders = st.session_state['orders']
+full_data = st.session_state['full_data']
 
 st.markdown("""
 <div style="
@@ -57,22 +80,6 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-orders, order_items, features, available, active_levers = load_demo_app_data()
-full_data = order_items  # line-item table (used by happy-path; degrades if empty)
-
-defaults = {
-    'features': features, 'full_data': full_data, 'chat_history': [], 'ui_history': [],
-    'model_idx': 0, 'scored_df': None, 'power': None, 'regular': None, 'cutoff': None,
-    'thresholds_df': None, 'power_user_ids': set(), 'top_pct': 10,
-    'weights': default_weights(active_levers),
-    'available': available,
-    'active_levers': active_levers,
-    'artifacts': [],
-    'active_model': MODEL_ARSENAL[0]['label'] if MODEL_ARSENAL else 'None'
-}
-for k, v in defaults.items():
-    if k not in st.session_state: st.session_state[k] = v
-
 # Restore the saved chat once per browser session (Feature 4).
 if 'session_loaded' not in st.session_state:
     saved_ui, saved_chat = load_session()
@@ -82,25 +89,21 @@ if 'session_loaded' not in st.session_state:
     st.session_state['session_loaded'] = True
 
 def run_analysis(top_pct):
+    features = st.session_state['features']
     with st.status("Running analysis…", expanded=True) as status:
         st.write(f"⚖️ Scoring all {len(features):,} users…")
         scored = score_users(features, st.session_state['weights'])
-
         st.write(f"🏆 Selecting top {top_pct}%…")
         power, regular, cutoff = get_power_users(scored, top_pct)
-
         st.write("📊 Computing segment thresholds…")
         thresholds = get_thresholds(power, regular)
-
         st.session_state.update({
             'scored_df': scored, 'power': power, 'regular': regular, 'cutoff': cutoff,
             'thresholds_df': thresholds, 'power_user_ids': set(power['user_id']),
             'top_pct': top_pct
         })
-        status.update(
-            label=f"Analysis complete — {len(power):,} power users found",
-            state="complete", expanded=False,
-        )
+        status.update(label=f"Analysis complete — {len(power):,} power users found",
+                      state="complete", expanded=False)
     st.success(f"✅ Analysis complete — Found **{len(power):,}** power users")
 
 def render_watch_alerts():
