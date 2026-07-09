@@ -18,7 +18,8 @@ def _dataset():
     orders = pd.DataFrame({"customer_id": [1, 1, 2], "order_id": [1, 2, 3],
                            "order_date": pd.to_datetime(["2024-01-01"] * 3),
                            "order_amount": [10.0, 5.0, 20.0]})
-    return orders, None, features, {"frequency": True, "monetary": True}, ["frequency", "monetary"]
+    items = pd.DataFrame({"order_id": [1, 2, 3], "product": ["a", "b", "c"]})
+    return orders, items, features, {"frequency": True, "monetary": True}, ["frequency", "monetary"]
 
 def test_sets_dataset_keys_and_label():
     state = _demo_state()
