@@ -5,6 +5,7 @@ from src.ui.renderer import apply_theme
 from src.data.app_data import load_demo_app_data
 from src.ui.dataset import set_active_dataset
 from src.ui.sidebar import render_sidebar
+from src.ui.upload import render_upload_section, render_confirm_gate
 from src.analysis.scoring import score_users, get_power_users, get_thresholds
 from src.config import MODEL_ARSENAL
 from src.ui.tabs.overview import render_overview
@@ -42,7 +43,11 @@ features = st.session_state['features']
 orders = st.session_state['orders']
 full_data = st.session_state['full_data']
 
-st.markdown("""
+_c = st.session_state.get("dataset_counts", {})
+_badge = (f"{st.session_state.get('dataset_label', 'Instacart')} &nbsp;//&nbsp; "
+          f"{_c.get('customers', 0):,} customers &nbsp;//&nbsp; {_c.get('orders', 0):,} orders")
+
+_HEADER_HTML = """
 <div style="
     display:flex; align-items:center; gap:18px;
     padding: 0.6rem 1.2rem 0.8rem;
@@ -75,10 +80,11 @@ st.markdown("""
             color:#FEF0D5; font-family:'Space Mono',monospace;
             font-size:0.7rem; font-weight:700; letter-spacing:0.04em;
             padding:2px 9px; text-transform:uppercase;
-        ">Instacart &nbsp;//&nbsp; 206,209 customers &nbsp;//&nbsp; 3.4M orders</div>
+        ">__BADGE__</div>
     </div>
 </div>
-""", unsafe_allow_html=True)
+"""
+st.markdown(_HEADER_HTML.replace("__BADGE__", _badge), unsafe_allow_html=True)
 
 # Restore the saved chat once per browser session (Feature 4).
 if 'session_loaded' not in st.session_state:
@@ -131,15 +137,18 @@ def render_watch_alerts():
 
 
 render_sidebar(features, orders, run_analysis)
+with st.sidebar:
+    render_upload_section(run_analysis)
 
-render_watch_alerts()
+if not render_confirm_gate(run_analysis):
+    render_watch_alerts()
 
-maybe_show_onboarding(run_analysis)
+    maybe_show_onboarding(run_analysis)
 
-tabs = st.tabs(["📊 Overview", "⚖️ Scoring", "👥 Segments", "🗺️ Happy Path", "🎯 Interventions", "🤖 AI Chat"])
-with tabs[0]: render_overview(features, orders)
-with tabs[1]: render_scoring()
-with tabs[2]: render_segments()
-with tabs[3]: render_happy_path(full_data)
-with tabs[4]: render_interventions()
-with tabs[5]: render_chat(features, orders)
+    tabs = st.tabs(["📊 Overview", "⚖️ Scoring", "👥 Segments", "🗺️ Happy Path", "🎯 Interventions", "🤖 AI Chat"])
+    with tabs[0]: render_overview(features, orders)
+    with tabs[1]: render_scoring()
+    with tabs[2]: render_segments()
+    with tabs[3]: render_happy_path(full_data)
+    with tabs[4]: render_interventions()
+    with tabs[5]: render_chat(features, orders)

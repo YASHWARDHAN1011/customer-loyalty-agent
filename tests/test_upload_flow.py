@@ -75,8 +75,15 @@ def test_apply_mapping_failure_returns_errors():
     assert result["errors"]
     assert result["matrix"] is None
 
+def test_confirm_gate_absent_on_demo_boot():
+    at = AppTest.from_file("app.py", default_timeout=60).run()
+    assert not at.exception, f"app raised: {at.exception}"
+    # No confirm gate pending on a clean demo boot.
+    assert "upload_stage" not in at.session_state or at.session_state["upload_stage"] is None
+
 if __name__ == "__main__":
     test_app_boots_on_demo_zero_exceptions()
+    test_confirm_gate_absent_on_demo_boot()
     test_prepare_upload_proposes_mapping_no_saved_recipe()
     test_prepare_upload_uses_saved_recipe_fast_path()
     test_apply_mapping_success_builds_canonical()
