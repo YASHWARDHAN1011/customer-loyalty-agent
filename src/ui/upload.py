@@ -188,3 +188,11 @@ def render_confirm_gate(run_analysis):
         _clear_upload_state(reset_uploader=True)
         st.rerun()
     return True
+
+
+def render_upload_notices():
+    """Show any pending upload build-warnings once (best-effort), then clear them."""
+    warnings = st.session_state.pop("upload_warnings", None)
+    if warnings:
+        for w in warnings:
+            st.warning(f"⚠️ {w}")

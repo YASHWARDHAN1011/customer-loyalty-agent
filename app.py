@@ -5,7 +5,7 @@ from src.ui.renderer import apply_theme
 from src.data.app_data import load_demo_app_data
 from src.ui.dataset import set_active_dataset
 from src.ui.sidebar import render_sidebar
-from src.ui.upload import render_upload_section, render_confirm_gate
+from src.ui.upload import render_upload_section, render_confirm_gate, render_upload_notices
 from src.analysis.scoring import score_users, get_power_users, get_thresholds
 from src.config import MODEL_ARSENAL
 from src.ui.tabs.overview import render_overview
@@ -142,6 +142,7 @@ with st.sidebar:
 
 if not render_confirm_gate(run_analysis):
     render_watch_alerts()
+    render_upload_notices()
 
     maybe_show_onboarding(run_analysis)
 
