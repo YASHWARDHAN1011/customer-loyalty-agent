@@ -61,6 +61,25 @@ _FIELD_LABEL = {
 }
 
 
+# Session keys owned by an in-progress upload (confirm screen state).
+_UPLOAD_KEYS = ("upload_stage", "upload_df", "upload_filename", "upload_mapping",
+                "upload_profile", "upload_saved", "upload_errors", "upload_warnings")
+
+
+def _clear_upload_state(*, reset_uploader=False):
+    """Drop all in-progress upload state (confirm keys + per-field selectbox keys).
+
+    `reset_uploader=True` also bumps the file_uploader nonce so Streamlit discards
+    the retained file (needed for Cancel / Back-to-demo so the guard won't re-fire).
+    """
+    for k in _UPLOAD_KEYS:
+        st.session_state.pop(k, None)
+    for k in [k for k in list(st.session_state) if k.startswith("map_")]:
+        st.session_state.pop(k, None)
+    if reset_uploader:
+        st.session_state["uploader_nonce"] = st.session_state.get("uploader_nonce", 0) + 1
+
+
 def _mapping_generate_fn(prompt):
     """Adapter: the mapper calls generate_fn(prompt)->str; wrap the app's generate."""
     from src.agent.caller import generate
@@ -82,14 +101,15 @@ def render_upload_section(run_analysis):
             o, it, f, av, al = load_demo_app_data()
             set_active_dataset(st.session_state, orders=o, order_items=it, features=f,
                                available=av, active_levers=al, label="Instacart", source="demo")
-            st.session_state.pop("upload_stage", None)
-            st.session_state.pop("upload_filename", None)
+            _clear_upload_state(reset_uploader=True)
             run_analysis(st.session_state["top_pct"])
             st.rerun()
 
     up = st.file_uploader("Upload CSV or Excel", type=["csv", "xlsx", "xls"],
-                          key="dataset_uploader")
+                          key=f"dataset_uploader_{st.session_state.get('uploader_nonce', 0)}")
     if up is not None and st.session_state.get("upload_filename") != up.name:
+        for k in [k for k in list(st.session_state) if k.startswith("map_")]:
+            st.session_state.pop(k, None)
         try:
             df = read_table(up, filename=up.name)
         except Exception as e:
@@ -120,8 +140,9 @@ def _build_and_activate(filename, df, mapping, run_analysis):
                        order_items=result["order_items"], features=feats,
                        available=available, active_levers=active,
                        label=filename, source="upload")
-    st.session_state["upload_stage"] = None
-    st.session_state["upload_warnings"] = result.get("warnings", [])
+    warnings = result.get("warnings", [])
+    _clear_upload_state()
+    st.session_state["upload_warnings"] = warnings
     run_analysis(st.session_state["top_pct"])
 
 
@@ -164,8 +185,6 @@ def render_confirm_gate(run_analysis):
         _build_and_activate(fname, df, chosen, run_analysis)
         st.rerun()
     if c2.button("Cancel", use_container_width=True):
-        for k in ("upload_stage", "upload_df", "upload_filename", "upload_mapping",
-                  "upload_profile", "upload_saved"):
-            st.session_state.pop(k, None)
+        _clear_upload_state(reset_uploader=True)
         st.rerun()
     return True
