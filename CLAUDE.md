@@ -10,6 +10,42 @@ This file has two jobs:
 
 ## 📓 Project Journal
 
+### 2026-07-10 — Intelligence Layer / Chat-First, Phase 6: Upload + mapping-confirm UI
+The app now has a front door. A user can upload their own CSV or Excel file, confirm
+the LLM-proposed column mapping in the UI, and the app swaps to their dataset and runs
+the full analysis on it. This is the Streamlit interface wired onto the Phase-3
+ingestion backend.
+- **`src/ui/dataset.py`** (NEW, pure): `set_active_dataset(state, ...)` — the single
+  seam that installs a dataset into `session_state`, resets `weights` to the new
+  dataset's active levers (`default_weights`), and clears stale analysis. Both the
+  upload path and "Back to demo" go through it so there is exactly one place that
+  swaps datasets.
+- **`app.py` refactor**: the demo now boots THROUGH `set_active_dataset` (called above
+  the header so the badge can read it); everything reads the active dataset from
+  `session_state`; `run_analysis` reads `session_state['features']`; the header badge
+  is now dynamic (reads `dataset_label`/`dataset_counts`, no longer hardcodes
+  "Instacart // 206,209 customers").
+- **`src/ui/upload.py`** (NEW): pure `prepare_upload` (profiles the file, hits the
+  saved-recipe fast path via header fingerprint if known, else calls `propose_mapping`
+  with a fuzzy fallback) + `apply_mapping` (validates/builds via `build_canonical`,
+  persists the recipe on success). Streamlit layer: `render_upload_section` (sidebar
+  uploader + dataset indicator + "Back to demo") and `render_confirm_gate` (main-area
+  confirm screen — a dropdown per canonical field pre-filled from the proposal, a data
+  preview, Confirm auto-runs analysis, Cancel); `_build_and_activate` swaps and
+  analyzes, keeping the confirm screen on failure with plain-language error messages.
+- **State-machine robustness**: the `st.file_uploader` uses a nonce key so
+  Cancel/Back-to-demo truly dismisses the widget (Streamlit otherwise retains the
+  file); stale per-field `map_*` widget keys are cleared on new-file/Cancel/Back/
+  success so a second upload is never silently pre-filled from the first run.
+- **Trust gate held**: nothing analyzes until `build_canonical` validates the mapping;
+  the confirm step is required for any first-seen file shape; a known fingerprint
+  fast-paths with a "using your saved mapping" note shown to the user.
+- **Testing**: `tests/test_dataset_swap.py` (swap helper, 9 checks) +
+  `tests/test_upload_flow.py` (pure `prepare_upload`/`apply_mapping` with a fake
+  `generate_fn`, plus an AppTest demo-boot check). All 9 no-network suites from
+  this task ran green; overall suite (9 suites) confirmed green in the regression
+  sweep.
+
 ### 2026-07-07 — Intelligence Layer / Chat-First, Phase 5: Re-anchor agent tools on canonical levers
 Closes the big Phase-4 caveat ("agent tools still Instacart-bound"). The analysis
 engine already ran on any dataset; now the **agent's tools** do too. Before this,
