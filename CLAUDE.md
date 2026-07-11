@@ -10,6 +10,49 @@ This file has two jobs:
 
 ## 📓 Project Journal
 
+### 2026-07-11 — Intelligence Layer / Chat-First, Phase 7: Chat-first shell + dispatch ladder
+Chat is now the app. The 6-tab dashboard is gone; the conversation is the landing
+page, and every message flows through one ordered decision structure instead of the
+old route-then-branch code inside the chat tab.
+- **`src/agent/dispatch.py`** (NEW, Streamlit-free): `dispatch(prompt, ...)` — the
+  ladder. Rungs, first match wins: (1) saved recipe [Phase 9 slot — `recipe_fn`,
+  None today], (2) known tool (`route` → "answer" → `call_agent`), (3) multi-step
+  goal (`route` → "goal" → `run_reflexive`), (4) grounded query [Phase 8 slot —
+  `grounded_fn`, reached only if the tool path returns nothing, None today]. All
+  collaborators (`route_fn`/`agent_fn`/`reflexive_fn`/`recipe_fn`/`grounded_fn`) are
+  injected so the module is fully unit-testable with fakes; the goal rung streams
+  live progress through an injected `on_step(reason, label)`. Any exception in a rung
+  is caught and returned as a relayable ⚠️ answer — a dispatch never crashes the chat.
+  Slots (1) and (4) are wired but inert, so Phases 8/9 drop in with no ladder change.
+- **`src/ui/full_numbers.py`** (NEW): `render_full_numbers()` — one dataset-agnostic
+  figures panel replacing the 5 retired analytical tabs. Reads the canonical feature
+  matrix + the same lever-agnostic helpers the agent tools use (`calculate_churn_risk`,
+  `compute_segment_gaps`/`build_comparison_data`, `generate_csv_export`): 4 key metrics
+  (customers / power users / at-risk 30d / avg loyalty score), a top-500 scored table
+  with a full-CSV download, and a power-vs-regular-by-lever bar chart. Best-effort —
+  any failure collapses to a one-line hint instead of crashing the page.
+- **`src/ui/tabs/chat.py`** (rewritten): the chat-first page body. Drops the 3-metric
+  status row, the 8-button quick-action wall, and the examples expander. Now: an API
+  banner, the proactive briefing, the conversation, 4 starter chips (only while the
+  user hasn't spoken), the chat input, a collapsible "📊 Full numbers" expander, the
+  deliverables panel, and "New conversation". Every message (chips, briefing actions,
+  input) goes through `_submit` → `dispatch`; goal results still inline tool output and
+  post a synthesized summary + neutral-shape continuity turns.
+- **`app.py` / `src/ui/tabs/__init__.py`**: dropped `st.tabs(...)` and the 5 tab
+  imports; `render_chat(features, orders)` is now the whole page (below the existing
+  watch alerts / upload notices / onboarding). `__init__.py` exports only `render_chat`.
+- **Deleted** `src/ui/tabs/{overview,scoring,segments,happy_path,interventions}.py` —
+  the Instacart-shaped tabs Phase 4 had left degrading behind guards. Their one useful
+  surface (the figures) now lives in `full_numbers.py`, dataset-agnostic.
+- **Chrome declutter**: the model-status metrics (active model / combos left) moved
+  from the chat into the sidebar's 🔑 API Status section.
+- **Testing**: `tests/test_dispatch.py` (6 checks — each rung, slot short-circuits,
+  fall-through, exception-caught, all with fakes), `tests/test_full_numbers.py` (hint
+  before analysis + metrics after, via AppTest), `tests/test_chat_shell.py` (app boots
+  0 exceptions, chat input present, no retired tab labels). Full no-network sweep green:
+  dispatch, full_numbers, chat_shell, upload_flow, dataset_swap, tools_canonical,
+  canonical (52), levers (18), app_data (6).
+
 ### 2026-07-10 — Intelligence Layer / Chat-First, Phase 6: Upload + mapping-confirm UI
 The app now has a front door. A user can upload their own CSV or Excel file, confirm
 the LLM-proposed column mapping in the UI, and the app swaps to their dataset and runs
