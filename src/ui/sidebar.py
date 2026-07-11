@@ -54,6 +54,12 @@ def render_sidebar(features, orders, run_btn_callback):
                 text=f"{remaining}/{len(LLM_ARSENAL)} combos remaining"
             )
 
+            # 🔌 Model status — the three metrics the chat used to show, moved
+            # here so the chat-first page stays clean.
+            m1, m2 = st.columns(2)
+            m1.metric("Model", current_combo["model"].replace("gemini-", ""))
+            m2.metric("Combos left", f"{remaining}/{len(LLM_ARSENAL)}")
+
         st.divider()
 
         # Dataset stats
