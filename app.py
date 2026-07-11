@@ -8,11 +8,6 @@ from src.ui.sidebar import render_sidebar
 from src.ui.upload import render_upload_section, render_confirm_gate, render_upload_notices
 from src.analysis.scoring import score_users, get_power_users, get_thresholds
 from src.config import MODEL_ARSENAL
-from src.ui.tabs.overview import render_overview
-from src.ui.tabs.scoring import render_scoring
-from src.ui.tabs.segments import render_segments
-from src.ui.tabs.happy_path import render_happy_path
-from src.ui.tabs.interventions import render_interventions
 from src.ui.tabs.chat import render_chat
 from src.ui.onboarding import maybe_show_onboarding
 from src.utils.persistence import load_session
@@ -146,10 +141,4 @@ if not render_confirm_gate(run_analysis):
 
     maybe_show_onboarding(run_analysis)
 
-    tabs = st.tabs(["📊 Overview", "⚖️ Scoring", "👥 Segments", "🗺️ Happy Path", "🎯 Interventions", "🤖 AI Chat"])
-    with tabs[0]: render_overview(features, orders)
-    with tabs[1]: render_scoring()
-    with tabs[2]: render_segments()
-    with tabs[3]: render_happy_path(full_data)
-    with tabs[4]: render_interventions()
-    with tabs[5]: render_chat(features, orders)
+    render_chat(features, orders)
