@@ -57,7 +57,14 @@ def dispatch(prompt, *, on_step=None, route_fn=_route, agent_fn=_call_agent,
             if res is not None:
                 return res
 
-        return DispatchResult(kind="answer", text=text or "")
+        # Nothing matched: the tool path returned no text and the grounded rung
+        # is inert (Phase 8). Return an honest fallback rather than an empty
+        # answer, which would render as a blank chat bubble that persists.
+        return DispatchResult(
+            kind="answer",
+            text="I couldn't produce an answer for that. Try rephrasing, or ask "
+                 "for a specific analysis (e.g. \"score customers\" or \"who is "
+                 "at risk of churning?\").")
     except Exception as e:  # never crash the chat on a dispatch failure
         return DispatchResult(kind="answer",
                               text=f"⚠️ I hit an error handling that: {e}")

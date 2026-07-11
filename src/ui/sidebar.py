@@ -42,23 +42,17 @@ def render_sidebar(features, orders, run_btn_callback):
             current_combo = LLM_ARSENAL[current_idx]
 
             st.success(f"✅ {len(API_KEYS)} key(s) loaded")
-            st.caption(
-                f"Active: {current_combo['model']} "
-                f"(combo {current_idx + 1}/{len(LLM_ARSENAL)})"
-            )
 
             used = min(st.session_state.model_idx, len(LLM_ARSENAL))
             remaining = len(LLM_ARSENAL) - used
-            st.progress(
-                used / len(LLM_ARSENAL),
-                text=f"{remaining}/{len(LLM_ARSENAL)} combos remaining"
-            )
 
-            # 🔌 Model status — the three metrics the chat used to show, moved
-            # here so the chat-first page stays clean.
+            # 🔌 Model status — the metrics the chat used to show, moved here so
+            # the chat-first page stays clean. The progress bar below is the only
+            # other widget in this section, so the numbers aren't duplicated.
             m1, m2 = st.columns(2)
             m1.metric("Model", current_combo["model"].replace("gemini-", ""))
             m2.metric("Combos left", f"{remaining}/{len(LLM_ARSENAL)}")
+            st.progress(used / len(LLM_ARSENAL), text="LLM quota used")
 
         st.divider()
 
