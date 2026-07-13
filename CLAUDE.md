@@ -10,6 +10,47 @@ This file has two jobs:
 
 ## 📓 Project Journal
 
+### 2026-07-13 — Intelligence Layer / Chat-First, Phase 8: Grounded data-query tool
+The agent got an out-of-box escape hatch: one constrained tool that computes real
+aggregates, group-bys, and correlations over the canonical tables, so the chat can
+answer novel questions no purpose-built tool covers — without ever letting the LLM
+invent a number.
+- **`src/analysis/query.py`** (NEW, pure / Streamlit-free): `run_query(tables, ...)`
+  — the engine. Flat scalar params; whitelisted `table` / `operation` / `agg` /
+  `filter_op`; validates every referenced column against the REAL dataframe columns
+  (never assumes Instacart names); coerces the one optional filter value to the
+  column's type; runs a scalar or grouped aggregate (sorted, capped at `limit`, hard
+  max 50, `truncated` flagged, all-null groups dropped) or a Pearson correlation
+  (needs ≥2 non-null pairs). NEVER raises — every guard returns
+  `{"ok": False, "error": <plain message>}`, and the whole body is wrapped so a bad
+  query degrades into relayable text, never a crash. On success it echoes the resolved
+  `query` dict (exactly what Phase 9 will freeze into a recipe).
+- **`src/agent/tools.py`** → `run_grounded_query(...)` (NEW tool, added to
+  `ALL_TOOLS`): assembles `{"customers": features, "orders": orders,
+  "order_items": full_data}` from `session_state`, calls the engine, and renders the
+  result into `ui_history` — a metric card for a scalar, a sorted table + bar chart
+  for a group-by, an r + plain-language strength/direction label for a correlation —
+  then returns a "narrate ONLY these numbers" instruction. Auto-registers through
+  `spec_from_function` (all-scalar signature); its first docstring line tells the
+  model this is for novel questions and that numbers are computed here, not by it.
+- **Trust invariant held:** the LLM only picks the query and narrates; code computes
+  every figure over real data. On the artifact/cloud path `full_data` is `None`, so
+  `order_items` questions degrade with an honest "product-level data isn't loaded"
+  message. The dispatch `grounded_fn` rung stays inert — this tool is reached via
+  normal function calling.
+- **Testing:** `tests/test_query.py` (NEW) — engine contract on hand-computable
+  fixtures: every agg, group-by correctness + sort, Pearson r, every `filter_op`
+  incl. `between` and string-equality, `limit` cap + `truncated`, all-null-group
+  drop, and every guard (bad table/op/agg/column, non-numeric metric,
+  `order_items=None`, empty population, <2 correlation pairs).
+  `tests/test_tools_canonical.py` (EXTENDED) — drives `run_grounded_query` through a
+  real Streamlit runtime on orders-only canonical data: a scalar and a correlation
+  return real numbers; bad-column and `order_items` queries degrade cleanly
+  (0 exceptions). Full no-network sweep green; app boots 0 exceptions.
+- **Out of scope (v1):** multiple/OR filters, joins, raw-row listing (search_users
+  owns that), time-series, and saving recipes (Phase 9 — Phase 8 only makes the
+  args recipe-shaped via the `query` echo).
+
 ### 2026-07-11 — Intelligence Layer / Chat-First, Phase 7: Chat-first shell + dispatch ladder
 Chat is now the app. The 6-tab dashboard is gone; the conversation is the landing
 page, and every message flows through one ordered decision structure instead of the
