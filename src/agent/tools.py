@@ -915,11 +915,17 @@ def run_grounded_query(
         }
 
     if kind == "table":
+        if not result["rows"]:
+            return {
+                "status": "error",
+                "error": "The group-by returned no results (all values were missing).",
+                "instruction": "Tell the user the query ran but returned no groups to display.",
+            }
         dim = group_by or "group"
         val_col = f"{agg} of {metric}"
         tdf = pd.DataFrame([{dim: row["group"], val_col: row["value"]}
                             for row in result["rows"]])
-        title = f"📊 {agg.title()} of {metric.replace('_', ' ')} by {group_by}"
+        title = f"📊 {agg.title()} of {metric.replace('_', ' ')} by {dim}"
         st.session_state.ui_history.append({
             "role": "assistant", "type": "table", "title": title, "data": tdf,
         })
