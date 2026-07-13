@@ -15,6 +15,7 @@ from src.agent.memory import clear_memory
 from src.agent.watches import (
     WATCHABLE_METRICS, load_watches, add_watch, remove_watch,
 )
+from src.agent.recipes import load_recipes, remove_recipe
 
 
 def render_sidebar(features, orders, run_btn_callback):
@@ -205,5 +206,22 @@ def render_sidebar(features, orders, run_btn_callback):
                     st.rerun()
         else:
             st.caption("No watches yet.")
+
+        st.divider()
+        st.markdown("### 🍳 Recipes")
+        st.caption("Saved one-click questions. Run recomputes on current data.")
+        _recipes = load_recipes()
+        if _recipes:
+            for rec in _recipes:
+                row, runb, delb = st.columns([4, 1, 1])
+                row.markdown(f"**{rec['name']}**")
+                if runb.button("▶", key=f"run_recipe_{rec['id']}"):
+                    st.session_state["run_recipe_id"] = rec["id"]
+                    st.rerun()
+                if delb.button("🗑", key=f"del_recipe_{rec['id']}"):
+                    remove_recipe(rec["id"])
+                    st.rerun()
+        else:
+            st.caption("No recipes yet.")
 
     return run_btn
