@@ -42,8 +42,12 @@ one-click "recipe" that recomputes on live data — closing the chat-first roadm
   requirements file, so `pip install -r requirements.txt` (and therefore a Streamlit
   Cloud deploy) had been silently broken since the file went UTF-16 in Phase 5; now
   `pip install -r` resolves cleanly. Rewrote `README.md` (what it is / run / deploy /
-  trust + data-portability story). Browser-smoke + a non-Instacart BYOD dry-run are
-  the remaining manual verification.
+  trust + data-portability story). **Verified 2026-07-14:** live headless server
+  boots HTTP 200 with 0 tracebacks (full recipe UI wired into chat + sidebar); the
+  recipe save-form → chip-run interaction is covered by `test_recipes_ui.py`
+  (AppTest); and a programmatic non-Instacart BYOD dry-run (client headers
+  cust/invoice/when/total → `build_canonical` → RFM matrix → grounded query returns
+  real numbers) confirms the client-data path end to end.
 - **Testing:** `tests/test_recipes.py` (store round-trip, describe_query, corrupt
   store, blank-name), `tests/test_recipes_ui.py` (AppTest: save form appears; chip
   renders and running it produces a card, 0 exceptions), extended
