@@ -148,6 +148,9 @@ def _run_recipe(recipe):
         st.session_state.ui_history.append({
             "role": "assistant", "type": "text",
             "content": f"⚠️ {result.get('error', 'Could not run that recipe.')}"})
+    # A replay re-sets last_grounded_query via the tool; clear it so the save
+    # form doesn't re-offer to save a recipe that already exists.
+    st.session_state.pop("last_grounded_query", None)
     save_session()
     st.rerun()
 
