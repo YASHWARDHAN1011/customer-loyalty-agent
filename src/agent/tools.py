@@ -29,6 +29,7 @@ from src.analysis.segmentation import compute_segment_gaps, build_comparison_dat
 from src.analysis.interventions import INTERVENTION_TEMPLATES, compute_intervention_gaps, template_for
 from src.analysis.metrics import calculate_churn_risk
 from src.analysis import simulation
+from src.analysis.query import run_query
 
 import uuid
 from datetime import date
@@ -823,6 +824,144 @@ def simulate_campaign(feature: str, lift_pct: float) -> dict:
     return result
 
 
+def _gq_fmt(v):
+    """Human number for a scalar result."""
+    return f"{v:,.2f}" if isinstance(v, float) else f"{v:,}"
+
+
+def _gq_corr_label(r):
+    """Plain-language strength + direction for a Pearson r."""
+    a = abs(r)
+    if a < 0.1:
+        return "no linear relationship"
+    strength = ("a weak" if a < 0.3 else "a moderate" if a < 0.6 else "a strong")
+    direction = "positive" if r > 0 else "negative"
+    return f"{strength} {direction} relationship"
+
+
+def run_grounded_query(
+    table: str = "customers",
+    operation: str = "aggregate",
+    metric: str = "", agg: str = "mean",
+    group_by: str = "",
+    filter_column: str = "", filter_op: str = "",
+    filter_value: str = "", filter_value2: str = "",
+    column_a: str = "", column_b: str = "",
+    limit: int = 20,
+) -> dict:
+    """Run a constrained aggregate, group-by, or correlation over the real data to answer a novel question no other tool covers — every number is computed here, not by you; narrate only the returned figures.
+
+    Use this ONLY when no purpose-built tool fits (scoring, churn, search, simulate).
+    Examples it can answer: "average order value by category" (table=orders,
+    operation=aggregate, metric=order_amount, agg=mean, group_by=category);
+    "how many customers have recency over 90 days" (table=customers, agg=count,
+    metric=customer_id, filter_column=recency_days, filter_op=">", filter_value="90");
+    "is frequency correlated with monetary value?" (operation=correlate,
+    column_a=frequency, column_b=monetary).
+
+    Args:
+        table: which table to query — customers, orders, or order_items.
+        operation: 'aggregate' (a number, optionally by group) or 'correlate' (two columns).
+        metric: the column to aggregate (for operation=aggregate).
+        agg: count, sum, mean, median, min, or max.
+        group_by: optional column to break the aggregate down by.
+        filter_column: optional single filter — the column to filter on.
+        filter_op: filter comparison — one of >, <, >=, <=, ==, between.
+        filter_value: the filter value (first bound for 'between').
+        filter_value2: the second bound, only for 'between'.
+        column_a: first numeric column to correlate (for operation=correlate).
+        column_b: second numeric column to correlate (for operation=correlate).
+        limit: max groups returned for a group-by (hard max 50).
+    """
+    features = st.session_state.get('features')
+    if features is None:
+        return {"error": "Data not loaded yet."}
+
+    tables = {
+        "customers": features,
+        "orders": st.session_state.get('orders'),
+        "order_items": st.session_state.get('full_data'),
+    }
+    result = run_query(
+        tables, table=table, operation=operation, metric=metric, agg=agg,
+        group_by=group_by, filter_column=filter_column, filter_op=filter_op,
+        filter_value=filter_value, filter_value2=filter_value2,
+        column_a=column_a, column_b=column_b, limit=limit,
+    )
+
+    if not result.get("ok"):
+        return {
+            "status": "error",
+            "error": result.get("error", "That query could not be run."),
+            "instruction": (
+                "Relay this message to the user plainly. Do NOT invent a number; "
+                "if a column is unavailable, say so and suggest a valid one."
+            ),
+        }
+
+    kind = result["kind"]
+
+    if kind == "scalar":
+        label = f"{agg.title()} of {metric.replace('_', ' ')}"
+        st.session_state.ui_history.append({
+            "role": "assistant", "type": "text",
+            "content": (f"### 📐 {label}\n\n**{_gq_fmt(result['value'])}**  \n"
+                        f"_computed over {result['n']:,} rows_"),
+        })
+        return {
+            "status": "success", "kind": "scalar", "computed": label,
+            "value": result["value"], "n": result["n"], "query": result["query"],
+            "instruction": "State this computed figure in one sentence. Use ONLY this number.",
+        }
+
+    if kind == "table":
+        if not result["rows"]:
+            return {
+                "status": "error",
+                "error": "The group-by returned no results (all values were missing).",
+                "instruction": "Tell the user the query ran but returned no groups to display.",
+            }
+        dim = group_by or "group"
+        val_col = f"{agg} of {metric}"
+        tdf = pd.DataFrame([{dim: row["group"], val_col: row["value"]}
+                            for row in result["rows"]])
+        title = f"📊 {agg.title()} of {metric.replace('_', ' ')} by {dim}"
+        st.session_state.ui_history.append({
+            "role": "assistant", "type": "table", "title": title, "data": tdf,
+        })
+        st.session_state.ui_history.append({
+            "role": "assistant", "type": "chart", "chart_type": "bar",
+            "title": title, "data": tdf, "x": dim, "y": val_col,
+        })
+        return {
+            "status": "success", "kind": "table", "rows": result["rows"],
+            "n_groups": result["n_groups"], "truncated": result["truncated"],
+            "query": result["query"],
+            "instruction": (
+                "Summarize the top groups from this computed table in 2-3 sentences "
+                "using ONLY these numbers. Mention if the list was truncated."
+            ),
+        }
+
+    # correlation
+    r = result["r"]
+    strength = _gq_corr_label(r)
+    st.session_state.ui_history.append({
+        "role": "assistant", "type": "text",
+        "content": (f"### 🔗 Correlation: {column_a} vs {column_b}\n\n"
+                    f"**r = {r:.2f}** — {strength}  \n"
+                    f"_computed over {result['n']:,} rows_"),
+    })
+    return {
+        "status": "success", "kind": "correlation", "r": r, "n": result["n"],
+        "strength": strength, "query": result["query"],
+        "instruction": (
+            "Explain in 1-2 sentences what this correlation means in plain language, "
+            "using ONLY r and the strength/direction label. Correlation is not causation."
+        ),
+    }
+
+
 # All tools Gemini can call
 ALL_TOOLS = [
     run_scoring_analysis,
@@ -837,4 +976,5 @@ ALL_TOOLS = [
     draft_campaign_emails,
     build_action_plan,
     simulate_campaign,
+    run_grounded_query,
 ]

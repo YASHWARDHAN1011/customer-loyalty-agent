@@ -1,7 +1,7 @@
 # Phase 8 — Grounded Data-Query Tool: Design
 
 **Date:** 2026-07-12
-**Status:** Approved (design); implementation not yet planned.
+**Status:** Implemented 2026-07-13 (plan: docs/superpowers/plans/2026-07-13-phase8-grounded-query.md).
 **Roadmap:** `docs/superpowers/specs/2026-07-05-chat-first-agent-roadmap-design.md` §Phase 8
 **Builds on:** Phase 7 chat-first shell + dispatch ladder (the inert `grounded_fn`
 rung), Phase 5 canonical-anchored tools, Phase 4.5 provider-agnostic tool loop.
