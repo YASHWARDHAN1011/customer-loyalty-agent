@@ -46,6 +46,15 @@ r["emails"] = tools.draft_campaign_emails()
 r["plan"] = tools.build_action_plan(20)
 r["segmentation"] = tools.run_segmentation()
 r["happy"] = tools.run_happy_path(3)
+# Phase 8 grounded query — scalar aggregate, correlation, order_items degrade.
+r["gq_scalar"] = tools.run_grounded_query(
+    table="customers", operation="aggregate", metric="frequency", agg="mean")
+r["gq_corr"] = tools.run_grounded_query(
+    table="customers", operation="correlate", column_a="frequency", column_b="monetary")
+r["gq_badcol"] = tools.run_grounded_query(
+    table="customers", operation="aggregate", metric="does_not_exist", agg="mean")
+r["gq_items"] = tools.run_grounded_query(
+    table="order_items", operation="aggregate", metric="anything", agg="count")
 '''
 
 def run():
@@ -104,3 +113,21 @@ print("test_tools_canonical: run_segmentation OK on canonical data")
 assert r["happy"].get("status") != "success" or "paths" in r["happy"], \
     f"happy_path should degrade cleanly on orders-only data: {r['happy']}"
 print("test_tools_canonical: run_happy_path degrades cleanly on canonical data")
+
+# --- Phase 8: run_grounded_query on canonical (orders-only) data ---
+assert r["gq_scalar"]["status"] == "success", f"grounded scalar failed: {r['gq_scalar']}"
+assert isinstance(r["gq_scalar"].get("value"), (int, float)), "grounded scalar returned a real number"
+assert r["gq_scalar"]["n"] >= 1, "grounded scalar counted real rows"
+print("test_tools_canonical: run_grounded_query scalar OK on canonical data")
+
+assert r["gq_corr"]["status"] == "success", f"grounded correlation failed: {r['gq_corr']}"
+assert isinstance(r["gq_corr"].get("r"), (int, float)), "grounded correlation returned a real r"
+print("test_tools_canonical: run_grounded_query correlation OK on canonical data")
+
+assert r["gq_badcol"]["status"] == "error", "grounded query reports a bad column as an error"
+assert "no such column" in r["gq_badcol"]["error"].lower(), r["gq_badcol"]
+print("test_tools_canonical: run_grounded_query bad-column degrades cleanly")
+
+assert r["gq_items"]["status"] == "error", "order_items query degrades (not loaded on canonical)"
+assert "product-level" in r["gq_items"]["error"].lower(), r["gq_items"]
+print("test_tools_canonical: run_grounded_query order_items degrades cleanly")
