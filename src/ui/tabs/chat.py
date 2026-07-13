@@ -16,6 +16,8 @@ from src.agent.orchestrator import synthesize_goal
 from src.agent.proactive import get_briefing
 from src.ui.full_numbers import render_full_numbers
 from src.utils.persistence import save_session, clear_session
+from src.agent import recipes as recipe_store
+from src.agent import tools
 
 _STARTERS = [
     "Score all customers and identify power users",
@@ -48,6 +50,13 @@ def _render_api_banner():
 
 
 def render_chat(features, orders):
+    _pending = st.session_state.pop("run_recipe_id", None)
+    if _pending:
+        _rec = next((r for r in recipe_store.load_recipes()
+                     if r["id"] == _pending), None)
+        if _rec:
+            _run_recipe(_rec)
+
     _render_api_banner()
     if not API_KEYS:
         st.error("⚠️ No API keys configured. Add GEMINI_KEY_1=your_key to your "
@@ -69,6 +78,9 @@ def render_chat(features, orders):
         for i, (col, starter) in enumerate(zip(cols, _STARTERS)):
             if col.button(starter, key=f"starter_{i}", use_container_width=True):
                 _submit(starter)
+
+    _render_save_recipe()
+    _render_recipe_chips()
 
     if prompt := st.chat_input("Ask anything, or give a goal…"):
         _submit(prompt)
@@ -122,6 +134,56 @@ def _submit(prompt: str):
 
     save_session()
     st.rerun()
+
+
+def _run_recipe(recipe):
+    """Deterministic replay of a saved grounded query — no router, no LLM."""
+    name = recipe.get("name", "recipe")
+    st.session_state.ui_history.append(
+        {"role": "user", "type": "text", "content": f"▶ {name}"})
+    with st.status(f"🍳 Running \"{name}\"…", expanded=False) as status:
+        result = tools.run_grounded_query(**recipe.get("query", {}))
+        status.update(label="Done", state="complete")
+    if result.get("status") == "error":
+        st.session_state.ui_history.append({
+            "role": "assistant", "type": "text",
+            "content": f"⚠️ {result.get('error', 'Could not run that recipe.')}"})
+    # A replay re-sets last_grounded_query via the tool; clear it so the save
+    # form doesn't re-offer to save a recipe that already exists.
+    st.session_state.pop("last_grounded_query", None)
+    save_session()
+    st.rerun()
+
+
+def _render_save_recipe():
+    lgq = st.session_state.get("last_grounded_query")
+    if not lgq:
+        return
+    # Plain widgets (not st.form): a form_submit_button doesn't surface in
+    # AppTest.button, and a keyed text_input would show a stale name on the next
+    # query. The whole expander disappears once last_grounded_query is cleared,
+    # so an unkeyed value= re-seeds correctly each time.
+    with st.expander("💾 Save as recipe", expanded=False):
+        name = st.text_input("Recipe name", value=lgq.get("label", ""))
+        if st.button("Save recipe", key="save_recipe_btn",
+                     use_container_width=True):
+            recipe_store.add_recipe(name, lgq["query"])
+            st.session_state.pop("last_grounded_query", None)
+            st.toast("Recipe saved.")
+            st.rerun()
+
+
+def _render_recipe_chips():
+    recs = recipe_store.load_recipes()
+    if not recs:
+        return
+    st.caption("🍳 Your recipes:")
+    cols = st.columns(min(len(recs), 4))
+    for i, rec in enumerate(recs):
+        col = cols[i % len(cols)]
+        if col.button(f"▶ {rec['name']}", key=f"recipe_chip_{rec['id']}",
+                      use_container_width=True):
+            _run_recipe(rec)
 
 
 def _seed_welcome(features, orders):

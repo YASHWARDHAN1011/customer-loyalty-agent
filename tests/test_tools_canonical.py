@@ -131,3 +131,13 @@ print("test_tools_canonical: run_grounded_query bad-column degrades cleanly")
 assert r["gq_items"]["status"] == "error", "order_items query degrades (not loaded on canonical)"
 assert "product-level" in r["gq_items"]["error"].lower(), r["gq_items"]
 print("test_tools_canonical: run_grounded_query order_items degrades cleanly")
+
+# --- Phase 9: successful grounded query stashes last_grounded_query ---
+try:
+    lgq = at.session_state["last_grounded_query"]
+except KeyError:
+    lgq = None
+assert lgq and isinstance(lgq.get("query"), dict), f"last_grounded_query stashed: {lgq}"
+assert lgq["query"]["operation"] == "correlate", "stash holds the LAST successful query"
+assert isinstance(lgq.get("label"), str) and lgq["label"], "stash carries a human label"
+print("test_tools_canonical: last_grounded_query stash OK")

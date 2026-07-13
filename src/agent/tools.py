@@ -39,6 +39,7 @@ from src.agent.deliverables import (
 )
 from src.agent import memory
 from src.agent import tool_context as tc
+from src.agent import recipes as _recipes
 
 
 def run_scoring_analysis(top_percentile: int = 10) -> dict:
@@ -898,6 +899,11 @@ def run_grounded_query(
                 "if a column is unavailable, say so and suggest a valid one."
             ),
         }
+
+    st.session_state["last_grounded_query"] = {
+        "query": result["query"],
+        "label": _recipes.describe_query(result["query"]),
+    }
 
     kind = result["kind"]
 
