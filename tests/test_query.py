@@ -109,4 +109,18 @@ mb = run_query(tables, metric="frequency", agg="count", filter_column="recency_d
 assert mb["ok"] is False and "between" in mb["error"].lower(), mb
 print("test_query: guards OK")
 
+# 7) NaN-group handling: a group whose metric is all-null is dropped from rows,
+#    but still counted in n_groups; values stay JSON-clean (no NaN token).
+import json
+nan_df = pd.DataFrame({
+    "grp":    ["x", "x", "y", "y"],
+    "val":    [1.0, 3.0, None, None],   # group y has no non-null values
+})
+ng = run_query({"customers": nan_df}, metric="val", agg="mean", group_by="grp")
+assert ng["ok"] and ng["n_groups"] == 2, ng          # both x and y are distinct groups
+groups = [row["group"] for row in ng["rows"]]
+assert "y" not in groups and "x" in groups, ng        # all-null group dropped from rows
+json.dumps(ng)  # must not raise / must be JSON-clean (no bare NaN token)
+print("test_query: NaN-group handling OK")
+
 print("test_query: ALL PASSED")

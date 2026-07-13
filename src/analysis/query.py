@@ -103,13 +103,15 @@ def _aggregate(df, metric, agg, group_by, limit):
         if group_by not in df.columns:
             return _err(f"No such column '{group_by}'. {_cols_msg(df)}")
         grouped = df.groupby(group_by)[metric].agg(agg).sort_values(ascending=False)
-        cap = max(1, min(int(limit or 20), _HARD_LIMIT))
-        truncated = len(grouped) > cap
+        n_groups = int(len(grouped))
+        valid = grouped.dropna()
+        cap = max(1, min(int(limit), _HARD_LIMIT))
+        truncated = len(valid) > cap
         rows = [{"group": str(k),
                  "value": (int(v) if agg == "count" else round(float(v), 4))}
-                for k, v in grouped.head(cap).items()]
+                for k, v in valid.head(cap).items()]
         return {"ok": True, "kind": "table", "rows": rows,
-                "n_groups": int(len(grouped)), "truncated": truncated}
+                "n_groups": n_groups, "truncated": truncated}
     value = _compute(df[metric], agg)
     return {"ok": True, "kind": "scalar",
             "value": (round(value, 4) if isinstance(value, float) else value),
