@@ -10,6 +10,46 @@ This file has two jobs:
 
 ## 📓 Project Journal
 
+### 2026-07-13 — Intelligence Layer / Chat-First, Phase 9: Recipes + finishing pass
+The last roadmap item. A good grounded-query answer can now be saved as a named,
+one-click "recipe" that recomputes on live data — closing the chat-first roadmap.
+- **`src/agent/recipes.py`** (NEW, pure / Streamlit-free): best-effort JSON store
+  at `.app_state/recipes.json` (same shape/guarantees as `watches.py`) holding
+  `{id,name,query,created}` — `query` is exactly the `run_grounded_query` arg dict.
+  No raw data, numbers, or code at rest. `load_recipes`/`add_recipe`
+  (blank name → derived label)/`remove_recipe` + pure `describe_query` (scalar /
+  grouped / correlation / filtered labels). NOTE: `path` resolves to the module
+  `RECIPES_FILE` at call time (not a bound default) so the UI + a monkeypatched
+  test share one store.
+- **`src/agent/tools.py`**: `run_grounded_query` now stashes
+  `session_state["last_grounded_query"] = {query, label}` on every SUCCESS (failures
+  never overwrite it) — the one seam the save form reads.
+- **`src/ui/tabs/chat.py`**: a "💾 Save as recipe" form (name pre-filled with the
+  derived label) after a grounded answer; a "🍳 Your recipes" chip row; and
+  `_run_recipe` — deterministic replay that calls `run_grounded_query(**query)`
+  directly (NOT through `dispatch`, NO LLM), so recipes work even with Gemini quota
+  exhausted. `render_chat` consumes a `run_recipe_id` flag set by the sidebar; a
+  replay clears `last_grounded_query` so the save form doesn't re-offer an existing
+  recipe.
+- **`src/ui/sidebar.py`**: a "🍳 Recipes" section (mirrors Watches) — list each
+  saved recipe with ▶ Run (sets the flag) and 🗑 delete.
+- Dispatch `recipe_fn` rung STAYS inert — recipes are chip-triggered with known
+  args, no NL matching. Recipes are dataset-agnostic: replaying one whose column is
+  absent on a swapped dataset yields the engine's clean "No such column" message,
+  never a crash.
+- **Finishing pass:** pinned `anthropic>=0.111.0`; **converted `requirements.txt`
+  from UTF-16 to UTF-8** — the hardening pass found pip cannot parse a UTF-16
+  requirements file, so `pip install -r requirements.txt` (and therefore a Streamlit
+  Cloud deploy) had been silently broken since the file went UTF-16 in Phase 5; now
+  `pip install -r` resolves cleanly. Rewrote `README.md` (what it is / run / deploy /
+  trust + data-portability story). Browser-smoke + a non-Instacart BYOD dry-run are
+  the remaining manual verification.
+- **Testing:** `tests/test_recipes.py` (store round-trip, describe_query, corrupt
+  store, blank-name), `tests/test_recipes_ui.py` (AppTest: save form appears; chip
+  renders and running it produces a card, 0 exceptions), extended
+  `tests/test_tools_canonical.py` (stash assertion). Full no-network sweep green;
+  app boots 0 exceptions. **Roadmap 4→9 complete.**
+
 ### 2026-07-13 — Intelligence Layer / Chat-First, Phase 8: Grounded data-query tool
 The agent got an out-of-box escape hatch: one constrained tool that computes real
 aggregates, group-bys, and correlations over the canonical tables, so the chat can

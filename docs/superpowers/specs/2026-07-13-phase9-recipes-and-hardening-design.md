@@ -1,7 +1,7 @@
 # Phase 9 — Recipes + Finishing/Hardening Pass: Design
 
 **Date:** 2026-07-13
-**Status:** Approved (design); implementation not yet planned.
+**Status:** Implemented 2026-07-13 (plan: docs/superpowers/plans/2026-07-13-phase9-recipes-and-hardening.md).
 **Roadmap:** `docs/superpowers/specs/2026-07-05-chat-first-agent-roadmap-design.md` §Phase 9 (the LAST roadmap item).
 **Builds on:** Phase 8 grounded-query tool (`run_grounded_query` echoes a recipe-shaped `query` dict), Phase 7 chat-first shell + dispatch ladder (the inert `recipe_fn` rung), the existing `.app_state/*.json` best-effort stores (`memory.py`, `watches.py`, `mapping_store.py`).
 
