@@ -41,7 +41,11 @@ one-click "recipe" that recomputes on live data — closing the chat-first roadm
   from UTF-16 to UTF-8** — the hardening pass found pip cannot parse a UTF-16
   requirements file, so `pip install -r requirements.txt` (and therefore a Streamlit
   Cloud deploy) had been silently broken since the file went UTF-16 in Phase 5; now
-  `pip install -r` resolves cleanly. Rewrote `README.md` (what it is / run / deploy /
+  `pip install -r` resolves cleanly. Also added the missing `openpyxl>=3.1` — the
+  ingest reader's `pd.read_excel` path for `.xlsx` uploads had no declared/installed
+  backend, so a real client Excel upload would have crashed on a fresh deploy
+  (verified a round-trip `.xlsx` now reads through `reader.read_table`). Rewrote
+  `README.md` (what it is / run / deploy /
   trust + data-portability story). **Verified 2026-07-14:** live headless server
   boots HTTP 200 with 0 tracebacks (full recipe UI wired into chat + sidebar); the
   recipe save-form → chip-run interaction is covered by `test_recipes_ui.py`
