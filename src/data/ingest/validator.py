@@ -5,13 +5,48 @@ Takes the raw DataFrame + a confirmed column mapping and returns a
 `ValidationResult`. On bad data it returns precise, human-readable messages —
 never a stack trace. Coercion is deterministic and lives ONLY here: amounts are
 stripped of currency symbols/commas and forced numeric (negatives clipped to 0
-with a warning), dates are parsed, and rows missing any required field after
-coercion are dropped. Pure module.
+with a warning), dates are parsed (day-first vs month-first is inferred from the
+column's evidence; a warning is emitted when the format is genuinely ambiguous),
+and rows missing any required field after coercion are dropped. Pure module.
 """
 
+import re
 from dataclasses import dataclass, field
 
 import pandas as pd
+
+# Numeric D/M/Y or M/D/Y with 1-2 digit day and month (ISO YYYY-MM-DD and
+# text-month formats are unambiguous and handled by pandas directly).
+_AMBIG_DATE = re.compile(r"^\s*(\d{1,2})[/-](\d{1,2})[/-]\d{2,4}\s*$")
+
+
+def _infer_dayfirst(raw: pd.Series):
+    """Decide day-first vs month-first from evidence in the column.
+
+    Returns (dayfirst: bool, ambiguous: bool). `ambiguous` is True only when
+    D/M values are present but none disambiguate (every day and month <= 12),
+    in which case we default to day-first and the caller warns.
+    """
+    saw_ambig = first_gt12 = second_gt12 = False
+    for v in raw.astype(str):
+        mtch = _AMBIG_DATE.match(v)
+        if not mtch:
+            continue
+        saw_ambig = True
+        a, b = int(mtch.group(1)), int(mtch.group(2))
+        if a > 12:
+            first_gt12 = True
+        if b > 12:
+            second_gt12 = True
+    if not saw_ambig:
+        # No numeric D/M/Y patterns at all (e.g. pure ISO column) — let pandas
+        # handle the column with its default (month-first / ISO-aware) parser.
+        return False, False
+    if first_gt12:
+        return True, False
+    if second_gt12:
+        return False, False
+    return True, saw_ambig
 
 REQUIRED = ["customer_id", "order_id", "order_date", "order_amount"]
 # Fraction of unparseable values in a required column that flips a warning into
@@ -74,7 +109,14 @@ def validate(df: pd.DataFrame, mapping: dict) -> ValidationResult:
     })
 
     raw_dates = df[mapping["order_date"]]
-    dates = pd.to_datetime(raw_dates, errors="coerce")
+    dayfirst, ambiguous = _infer_dayfirst(raw_dates)
+    dates = pd.to_datetime(raw_dates, errors="coerce", dayfirst=dayfirst)
+    if ambiguous:
+        warnings.append(
+            f"Dates in column '{mapping['order_date']}' use an ambiguous "
+            f"D/M/Y format (all values <= 12) and were read as day-first "
+            f"(DD/MM/YYYY). Verify the date column if your data is US-style "
+            f"(MM/DD/YYYY).")
     bad_dates = dates.isna() & raw_dates.notna() & (raw_dates.astype(str).str.strip() != "")
     if len(df) and bad_dates.mean() > _FAIL_FRACTION:
         errors.append(

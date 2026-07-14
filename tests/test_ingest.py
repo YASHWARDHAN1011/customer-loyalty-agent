@@ -187,6 +187,48 @@ def test_validate_bad_dates():
     check("date error mentions column", any("when" in e for e in r.errors))
 
 
+def test_validate_au_dates():
+    from src.data.ingest.validator import validate
+    import pandas as pd
+    m = {"customer_id": "cust", "order_id": "ord",
+         "order_date": "when", "order_amount": "total"}
+
+    # Decisive: 13 > 12 in first slot => day-first for the whole column.
+    df = pd.DataFrame({"cust": ["c1", "c1"], "ord": ["o1", "o2"],
+                       "when": ["13/06/2025", "03/04/2025"], "total": ["100", "200"]})
+    r = validate(df, m)
+    d = dict(zip(r.orders["order_id"], r.orders["order_date"]))
+    check("AU 13/06 -> 13 June", d["o1"] == pd.Timestamp("2025-06-13"))
+    check("AU 03/04 -> 3 April (day-first)", d["o2"] == pd.Timestamp("2025-04-03"))
+    check("decisive day-first: no ambiguity warning",
+          not any("ambiguous" in w.lower() for w in r.warnings))
+
+    # Decisive the other way: 13 in the SECOND slot => month-first.
+    df2 = pd.DataFrame({"cust": ["c1"], "ord": ["o1"],
+                        "when": ["04/13/2025"], "total": ["50"]})
+    r2 = validate(df2, m)
+    check("US 04/13 -> 13 April (month-first)",
+          r2.orders["order_date"].iloc[0] == pd.Timestamp("2025-04-13"))
+
+    # Truly ambiguous (all components <= 12): default day-first + warn.
+    df3 = pd.DataFrame({"cust": ["c1"], "ord": ["o1"],
+                        "when": ["05/06/2025"], "total": ["50"]})
+    r3 = validate(df3, m)
+    check("ambiguous defaults to day-first (5 June)",
+          r3.orders["order_date"].iloc[0] == pd.Timestamp("2025-06-05"))
+    check("ambiguous emits a warning",
+          any("ambiguous" in w.lower() for w in r3.warnings))
+
+    # ISO dates stay unambiguous and warning-free.
+    df4 = pd.DataFrame({"cust": ["c1"], "ord": ["o1"],
+                        "when": ["2025-06-13"], "total": ["50"]})
+    r4 = validate(df4, m)
+    check("ISO date parses",
+          r4.orders["order_date"].iloc[0] == pd.Timestamp("2025-06-13"))
+    check("ISO date: no ambiguity warning",
+          not any("ambiguous" in w.lower() for w in r4.warnings))
+
+
 def test_validate_negative_amount_warns():
     from src.data.ingest.validator import validate
     df = _good_df(); df["amt"] = ["-5", "10", "20"]
@@ -348,6 +390,7 @@ def main():
     test_validate_happy()
     test_validate_missing_required()
     test_validate_bad_dates()
+    test_validate_au_dates()
     test_validate_negative_amount_warns()
     test_validate_builds_items()
     test_validate_empty_file()
