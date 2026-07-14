@@ -75,6 +75,20 @@ def test_apply_mapping_failure_returns_errors():
     assert result["errors"]
     assert result["matrix"] is None
 
+def test_apply_mapping_honors_overrides():
+    csv = "c,o,when,amt,sku\nc1,o1,03/04/2025,25,A\nc1,o1,03/04/2025,25,B\n"
+    df = pd.read_csv(io.StringIO(csv), dtype=str)
+    m = {"customer_id": "c", "order_id": "o", "order_date": "when",
+         "order_amount": "amt", "product": "sku"}
+    with tempfile.TemporaryDirectory() as d:
+        store = os.path.join(d, "mappings.json")
+        # month-first => 03/04 is March 4; line_item => identical 25+25 summed to 50.
+        res = apply_mapping(df, m, store_path=store, dayfirst=False, grain="line_item")
+    assert res["ok"] is True
+    row = res["orders"].iloc[0]
+    assert float(row["order_amount"]) == 50.0
+    assert row["order_date"] == pd.Timestamp("2025-03-04")
+
 def test_confirm_gate_absent_on_demo_boot():
     at = AppTest.from_file("app.py", default_timeout=60).run()
     assert not at.exception, f"app raised: {at.exception}"
@@ -88,4 +102,5 @@ if __name__ == "__main__":
     test_prepare_upload_uses_saved_recipe_fast_path()
     test_apply_mapping_success_builds_canonical()
     test_apply_mapping_failure_returns_errors()
+    test_apply_mapping_honors_overrides()
     print("test_upload_flow: OK")

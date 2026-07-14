@@ -39,13 +39,14 @@ def prepare_upload(df, generate_fn, store_path=_STORE):
             "source": proposed["source"], "profile": profile, "saved": False}
 
 
-def apply_mapping(df, mapping, store_path=_STORE):
+def apply_mapping(df, mapping, store_path=_STORE, dayfirst=None, grain=None):
     """Validate + build canonical for a confirmed mapping.
 
-    On success, persists the mapping recipe for next time. Returns the builder
-    result dict {ok, errors, warnings, orders, order_items, matrix}.
+    `dayfirst`/`grain` are optional operator overrides (None = auto). On success,
+    persists the mapping recipe for next time. Returns the builder result dict
+    {ok, errors, warnings, orders, order_items, matrix}.
     """
-    result = build_canonical(df, mapping)
+    result = build_canonical(df, mapping, dayfirst=dayfirst, grain=grain)
     if result["ok"]:
         save_mapping(list(df.columns), mapping, path=store_path)
     return result
