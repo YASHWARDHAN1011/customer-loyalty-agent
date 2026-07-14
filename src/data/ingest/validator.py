@@ -5,9 +5,11 @@ Takes the raw DataFrame + a confirmed column mapping and returns a
 `ValidationResult`. On bad data it returns precise, human-readable messages —
 never a stack trace. Coercion is deterministic and lives ONLY here: amounts are
 stripped of currency symbols/commas and forced numeric (negatives clipped to 0
-with a warning), dates are parsed (day-first vs month-first is inferred from the
-column's evidence; a warning is emitted when the format is genuinely ambiguous),
-and rows missing any required field after coercion are dropped. Pure module.
+with a warning), dates are parsed (day-first vs month-first can be forced via the
+`dayfirst` parameter, or is otherwise inferred from the column's evidence; a
+warning is emitted when the format is genuinely ambiguous and no override was
+given), and rows missing any required field after coercion are dropped. Pure
+module.
 """
 
 import re
@@ -79,7 +81,7 @@ def _clean_amount(series: pd.Series) -> pd.Series:
     return pd.to_numeric(cleaned, errors="coerce")
 
 
-def validate(df: pd.DataFrame, mapping: dict) -> ValidationResult:
+def validate(df: pd.DataFrame, mapping: dict, dayfirst=None) -> ValidationResult:
     errors, warnings = [], []
 
     missing = [f for f in REQUIRED if not mapping.get(f)]
@@ -109,8 +111,11 @@ def validate(df: pd.DataFrame, mapping: dict) -> ValidationResult:
     })
 
     raw_dates = df[mapping["order_date"]]
-    dayfirst, ambiguous = _infer_dayfirst(raw_dates)
-    dates = pd.to_datetime(raw_dates, errors="coerce", dayfirst=dayfirst)
+    if dayfirst is None:
+        resolved, ambiguous = _infer_dayfirst(raw_dates)
+    else:
+        resolved, ambiguous = dayfirst, False
+    dates = pd.to_datetime(raw_dates, errors="coerce", dayfirst=resolved)
     if ambiguous:
         warnings.append(
             f"Dates in column '{mapping['order_date']}' use an ambiguous "

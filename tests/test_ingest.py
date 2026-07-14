@@ -229,6 +229,23 @@ def test_validate_au_dates():
           not any("ambiguous" in w.lower() for w in r4.warnings))
 
 
+def test_validate_dayfirst_override():
+    from src.data.ingest.validator import validate
+    import pandas as pd
+    m = {"customer_id": "c", "order_id": "o", "order_date": "when", "order_amount": "t"}
+    # All components <= 12 -> auto would be ambiguous; force each locale explicitly.
+    df = pd.DataFrame({"c": ["c1", "c1"], "o": ["o1", "o2"],
+                       "when": ["06/07/2025", "08/09/2025"], "t": ["10", "20"]})
+    r_us = validate(df, m, dayfirst=False)  # month-first: 06/07/2025 = MM=06(June) DD=07 -> 2025-06-07
+    check("force month-first: 06/07 -> 7 June",
+          r_us.orders.set_index("order_id").loc["o1", "order_date"] == pd.Timestamp("2025-06-07"))
+    check("forced choice suppresses ambiguity warning",
+          not any("ambiguous" in w.lower() for w in r_us.warnings))
+    r_au = validate(df, m, dayfirst=True)   # day-first: DD=06, MM=07 -> 6 July
+    check("force day-first: 06/07 -> 6 July",
+          r_au.orders.set_index("order_id").loc["o1", "order_date"] == pd.Timestamp("2025-07-06"))
+
+
 def test_validate_negative_amount_warns():
     from src.data.ingest.validator import validate
     df = _good_df(); df["amt"] = ["-5", "10", "20"]
@@ -464,6 +481,7 @@ def main():
     test_validate_missing_required()
     test_validate_bad_dates()
     test_validate_au_dates()
+    test_validate_dayfirst_override()
     test_validate_negative_amount_warns()
     test_validate_builds_items()
     test_validate_empty_file()
