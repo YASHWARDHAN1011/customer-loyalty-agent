@@ -367,6 +367,42 @@ def test_build_canonical_sums_line_items():
           not any("summed" in w.lower() for w in res2["warnings"]))
 
 
+def test_au_shopify_export_end_to_end():
+    """A messy Shopify/WooCommerce-style AU export through the full pipeline:
+    DD/MM/YYYY dates, $ + thousands commas, a parenthesised refund, and a
+    multi-line order. Every number below is hand-computed."""
+    from src.data.ingest.builder import build_canonical
+    import pandas as pd
+    df = pd.DataFrame({
+        "Email":      ["ann@x.com", "ann@x.com", "ann@x.com", "bob@x.com", "bob@x.com"],
+        "Name":       ["#1001", "#1001", "#1002", "#2001", "#2002"],
+        "Created at": ["13/06/2025", "13/06/2025", "20/06/2025", "01/06/2025", "15/06/2025"],
+        "Total":      ["$1,200.00", "$300.00", "$50.00", "$80.00", "($20.00)"],
+        "Lineitem":   ["Sofa", "Cushion", "Lamp", "Mug", "Return"],
+    })
+    m = {"customer_id": "Email", "order_id": "Name", "order_date": "Created at",
+         "order_amount": "Total", "product": "Lineitem"}
+    res = build_canonical(df, m)
+    check("AU export builds ok", res["ok"] is True)
+
+    orders = res["orders"].set_index("order_id")
+    # Order #1001 = two lines (1200 + 300) summed = 1500.
+    check("multi-line order #1001 summed to 1500",
+          float(orders.loc["#1001", "order_amount"]) == 1500.0)
+    # Date read day-first: 13/06/2025 -> 13 June (13 > 12 forces day-first).
+    check("AU date #1001 = 13 June 2025",
+          orders.loc["#1001", "order_date"] == pd.Timestamp("2025-06-13"))
+    # Refund ($20) clipped to 0.
+    check("refund order #2002 clipped to 0",
+          float(orders.loc["#2002", "order_amount"]) == 0.0)
+
+    # FeatureMatrix RFM for Ann: 2 orders (#1001, #1002), monetary 1500+50 = 1550.
+    fm = res["matrix"]
+    feats = fm.frame.set_index("customer_id")
+    check("Ann frequency = 2 orders", int(feats.loc["ann@x.com", "frequency"]) == 2)
+    check("Ann monetary = 1550", float(feats.loc["ann@x.com", "monetary"]) == 1550.0)
+
+
 def test_build_canonical_line_grained_warns():
     from src.data.ingest.builder import build_canonical
     import pandas as pd
@@ -438,6 +474,7 @@ def main():
     test_build_canonical_orders_only()
     test_build_canonical_dedups_orders()
     test_build_canonical_sums_line_items()
+    test_au_shopify_export_end_to_end()
     test_build_canonical_rejects_bad()
     test_build_canonical_line_grained_warns()
     test_validate_accounting_negative_with_currency()
