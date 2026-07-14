@@ -384,6 +384,44 @@ def test_build_canonical_sums_line_items():
           not any("summed" in w.lower() for w in res2["warnings"]))
 
 
+def test_build_canonical_grain_override():
+    from src.data.ingest.builder import build_canonical
+    import pandas as pd
+    # line_item: two IDENTICAL lines @25 -> auto keeps 25, but forced line_item sums to 50.
+    df = pd.DataFrame({"c": ["c1", "c1"], "o": ["o1", "o1"],
+                       "when": ["2025-01-01", "2025-01-01"], "amt": ["25", "25"], "sku": ["A", "B"]})
+    m = {"customer_id": "c", "order_id": "o", "order_date": "when",
+         "order_amount": "amt", "product": "sku"}
+    res = build_canonical(df, m, grain="line_item")
+    check("line_item sums identical lines to 50",
+          float(res["orders"]["order_amount"].iloc[0]) == 50.0)
+    check("line_item warns", any("line-item" in w.lower() for w in res["warnings"]))
+
+    # order_level: differing amounts -> keep first (10), warn about discarding.
+    df2 = pd.DataFrame({"c": ["c1", "c1"], "o": ["o1", "o1"],
+                        "when": ["2025-01-01", "2025-01-01"], "amt": ["10", "15"]})
+    m2 = {"customer_id": "c", "order_id": "o", "order_date": "when", "order_amount": "amt"}
+    res2 = build_canonical(df2, m2, grain="order_level")
+    check("order_level keeps first amount (10)",
+          float(res2["orders"]["order_amount"].iloc[0]) == 10.0)
+    check("order_level warns first-was-kept",
+          any("first was kept" in w.lower() for w in res2["warnings"]))
+
+
+def test_detect_grain():
+    from src.data.ingest.builder import detect_grain
+    import pandas as pd
+    m = {"customer_id": "c", "order_id": "o", "order_date": "when", "order_amount": "amt"}
+    diff = pd.DataFrame({"c": ["c1", "c1"], "o": ["o1", "o1"],
+                         "when": ["x", "x"], "amt": ["30", "45"]})
+    check("detect line_item on differing amounts", detect_grain(diff, m) == "line_item")
+    same = pd.DataFrame({"c": ["c1", "c1"], "o": ["o1", "o1"],
+                         "when": ["x", "x"], "amt": ["30", "30"]})
+    check("detect order_level on identical amounts", detect_grain(same, m) == "order_level")
+    check("detect order_level when amount unmapped",
+          detect_grain(same, {"customer_id": "c", "order_id": "o", "order_date": "when"}) == "order_level")
+
+
 def test_au_shopify_export_end_to_end():
     """A messy Shopify/WooCommerce-style AU export through the full pipeline:
     DD/MM/YYYY dates, $ + thousands commas, a parenthesised refund, and a
@@ -492,6 +530,8 @@ def main():
     test_build_canonical_orders_only()
     test_build_canonical_dedups_orders()
     test_build_canonical_sums_line_items()
+    test_build_canonical_grain_override()
+    test_detect_grain()
     test_au_shopify_export_end_to_end()
     test_build_canonical_rejects_bad()
     test_build_canonical_line_grained_warns()
