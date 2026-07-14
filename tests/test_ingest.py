@@ -331,18 +331,55 @@ def test_build_canonical_rejects_bad():
     check("no matrix on failure", res["matrix"] is None)
 
 
-def test_build_canonical_line_grained_warns():
-    # Same order_id with two different amounts (a line-grained file): builder
-    # must still succeed but WARN that revenue may be under-counted.
+def test_build_canonical_sums_line_items():
     from src.data.ingest.builder import build_canonical
+    import pandas as pd
+    # One order, three line rows with DISTINCT line prices -> true total 100.
+    df = pd.DataFrame({
+        "cust": ["c1", "c1", "c1"],
+        "ord":  ["o1", "o1", "o1"],
+        "when": ["2025-01-01", "2025-01-01", "2025-01-01"],
+        "line": ["30", "45", "25"],
+        "sku":  ["A", "B", "C"],
+    })
+    m = {"customer_id": "cust", "order_id": "ord", "order_date": "when",
+         "order_amount": "line", "product": "sku"}
+    res = build_canonical(df, m)
+    check("line-item build ok", res["ok"] is True)
+    check("one order after collapse", len(res["orders"]) == 1)
+    check("line prices summed to order total (100)",
+          float(res["orders"]["order_amount"].iloc[0]) == 100.0)
+    check("summed-lines warning present",
+          any("summed" in w.lower() for w in res["warnings"]))
+
+    # Repeated per-order TOTAL on every line -> must be kept once, NOT summed.
+    df2 = pd.DataFrame({
+        "cust": ["c1", "c1"], "ord": ["o1", "o1"],
+        "when": ["2025-01-01", "2025-01-01"],
+        "amt":  ["100", "100"], "sku": ["A", "B"],
+    })
+    m2 = {"customer_id": "cust", "order_id": "ord", "order_date": "when",
+          "order_amount": "amt", "product": "sku"}
+    res2 = build_canonical(df2, m2)
+    check("repeated total kept once (100, not 200)",
+          float(res2["orders"]["order_amount"].iloc[0]) == 100.0)
+    check("repeated total: no summed warning",
+          not any("summed" in w.lower() for w in res2["warnings"]))
+
+
+def test_build_canonical_line_grained_warns():
+    from src.data.ingest.builder import build_canonical
+    import pandas as pd
     df = pd.DataFrame({
         "cust": ["1", "1"], "ord": ["100", "100"],
-        "when": ["2024-01-02", "2024-01-02"], "amt": ["12.50", "8.00"]})
-    res = build_canonical(df, _GOOD_MAP)
-    check("line-grained still ok", res["ok"] is True)
-    check("line-grained warns about differing amounts",
-          any("more than one distinct amount" in w for w in res["warnings"]))
-    check("still deduped to one order", len(res["orders"]) == 1)
+        "when": ["2024-01-02", "2024-01-02"], "amt": ["10", "15"],
+    })
+    m = {"customer_id": "cust", "order_id": "ord",
+         "order_date": "when", "order_amount": "amt"}
+    res = build_canonical(df, m)
+    check("line-grained summed to 25", float(res["orders"]["order_amount"].iloc[0]) == 25.0)
+    check("line-grained warns about summing",
+          any("summed" in w.lower() for w in res["warnings"]))
 
 
 def test_validate_accounting_negative_with_currency():
@@ -400,6 +437,7 @@ def main():
     test_build_canonical_full()
     test_build_canonical_orders_only()
     test_build_canonical_dedups_orders()
+    test_build_canonical_sums_line_items()
     test_build_canonical_rejects_bad()
     test_build_canonical_line_grained_warns()
     test_validate_accounting_negative_with_currency()
