@@ -1,18 +1,24 @@
 """
 Builder: assemble validated data into canonical tables + a FeatureMatrix.
 
-Runs the validator, then (on success) de-duplicates `orders` on order_id and
-hands the canonical tables to Phase 1's `build_feature_matrix`. Returns a plain
+Runs the validator, then (on success) collapses `orders` to one row per order_id
+and hands the canonical tables to Phase 1's `build_feature_matrix`. Returns a plain
 dict so the (later) UI layer can render success, warnings, or a clean error list
 without catching exceptions.
 
-Assumption: the uploaded file is order-grained for `orders` — a logical order may
-appear on several line rows, so `order_amount` is read as an order TOTAL repeated
-across those rows (kept once via drop_duplicates), NOT summed per line. Line-level
-detail flows into `order_items` when product/category columns are mapped.
+Collapse rule: per order_id, if all line amounts are identical the value is treated
+as a repeated order total (kept once); if the amounts differ they are per-line prices
+and are summed to the order total. This handles both order-grained and line-grained
+exports without silent revenue under-counting.
 """
 
 from src.data.ingest.validator import validate
+
+
+def _collapse_amount(s):
+    """Per order: identical amounts are a repeated order total (keep one);
+    differing amounts are per-line prices (sum to the order total)."""
+    return s.iloc[0] if s.nunique(dropna=False) == 1 else s.sum()
 
 
 def build_canonical(df, mapping) -> dict:
@@ -25,21 +31,23 @@ def build_canonical(df, mapping) -> dict:
 
     from src.data.canonical import build_feature_matrix
 
-    # Detect a likely line-grained file (same order_id with more than one
-    # distinct amount) before dedup, so a silent revenue under-count surfaces
-    # as a warning the operator can act on. Copy warnings so we never mutate
-    # the ValidationResult's list.
+    # Copy warnings so we never mutate the ValidationResult's list.
     warnings = list(result.warnings)
-    amt_per_order = result.orders.groupby("order_id")["order_amount"].nunique()
-    ambiguous = int((amt_per_order > 1).sum())
-    if ambiguous:
-        warnings.append(
-            f"{ambiguous} order id(s) appear with more than one distinct amount. "
-            "This file may be line-grained (amount per line, not per order); the "
-            "first amount per order id is used, so revenue totals may be off. "
-            "Verify the amount column mapping.")
 
-    orders = result.orders.drop_duplicates("order_id").reset_index(drop=True)
+    amt_per_order = result.orders.groupby("order_id")["order_amount"].nunique()
+    summed = int((amt_per_order > 1).sum())
+    if summed:
+        warnings.append(
+            f"{summed} order(s) spanned multiple line amounts and were summed to "
+            "an order total. Verify the amount column mapping.")
+
+    orders = (result.orders
+              .groupby("order_id", sort=False)
+              .agg(customer_id=("customer_id", "first"),
+                   order_date=("order_date", "first"),
+                   order_amount=("order_amount", _collapse_amount))
+              .reset_index())
+    orders = orders[["customer_id", "order_id", "order_date", "order_amount"]]
     # build_feature_matrix is exception-safe on validated input (amounts numeric,
     # dates parsed, ids non-null, orders non-empty after dedup).
     matrix = build_feature_matrix(orders, result.order_items)

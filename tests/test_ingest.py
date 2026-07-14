@@ -187,6 +187,48 @@ def test_validate_bad_dates():
     check("date error mentions column", any("when" in e for e in r.errors))
 
 
+def test_validate_au_dates():
+    from src.data.ingest.validator import validate
+    import pandas as pd
+    m = {"customer_id": "cust", "order_id": "ord",
+         "order_date": "when", "order_amount": "total"}
+
+    # Decisive: 13 > 12 in first slot => day-first for the whole column.
+    df = pd.DataFrame({"cust": ["c1", "c1"], "ord": ["o1", "o2"],
+                       "when": ["13/06/2025", "03/04/2025"], "total": ["100", "200"]})
+    r = validate(df, m)
+    d = dict(zip(r.orders["order_id"], r.orders["order_date"]))
+    check("AU 13/06 -> 13 June", d["o1"] == pd.Timestamp("2025-06-13"))
+    check("AU 03/04 -> 3 April (day-first)", d["o2"] == pd.Timestamp("2025-04-03"))
+    check("decisive day-first: no ambiguity warning",
+          not any("ambiguous" in w.lower() for w in r.warnings))
+
+    # Decisive the other way: 13 in the SECOND slot => month-first.
+    df2 = pd.DataFrame({"cust": ["c1"], "ord": ["o1"],
+                        "when": ["04/13/2025"], "total": ["50"]})
+    r2 = validate(df2, m)
+    check("US 04/13 -> 13 April (month-first)",
+          r2.orders["order_date"].iloc[0] == pd.Timestamp("2025-04-13"))
+
+    # Truly ambiguous (all components <= 12): default day-first + warn.
+    df3 = pd.DataFrame({"cust": ["c1"], "ord": ["o1"],
+                        "when": ["05/06/2025"], "total": ["50"]})
+    r3 = validate(df3, m)
+    check("ambiguous defaults to day-first (5 June)",
+          r3.orders["order_date"].iloc[0] == pd.Timestamp("2025-06-05"))
+    check("ambiguous emits a warning",
+          any("ambiguous" in w.lower() for w in r3.warnings))
+
+    # ISO dates stay unambiguous and warning-free.
+    df4 = pd.DataFrame({"cust": ["c1"], "ord": ["o1"],
+                        "when": ["2025-06-13"], "total": ["50"]})
+    r4 = validate(df4, m)
+    check("ISO date parses",
+          r4.orders["order_date"].iloc[0] == pd.Timestamp("2025-06-13"))
+    check("ISO date: no ambiguity warning",
+          not any("ambiguous" in w.lower() for w in r4.warnings))
+
+
 def test_validate_negative_amount_warns():
     from src.data.ingest.validator import validate
     df = _good_df(); df["amt"] = ["-5", "10", "20"]
@@ -289,18 +331,91 @@ def test_build_canonical_rejects_bad():
     check("no matrix on failure", res["matrix"] is None)
 
 
-def test_build_canonical_line_grained_warns():
-    # Same order_id with two different amounts (a line-grained file): builder
-    # must still succeed but WARN that revenue may be under-counted.
+def test_build_canonical_sums_line_items():
     from src.data.ingest.builder import build_canonical
+    import pandas as pd
+    # One order, three line rows with DISTINCT line prices -> true total 100.
+    df = pd.DataFrame({
+        "cust": ["c1", "c1", "c1"],
+        "ord":  ["o1", "o1", "o1"],
+        "when": ["2025-01-01", "2025-01-01", "2025-01-01"],
+        "line": ["30", "45", "25"],
+        "sku":  ["A", "B", "C"],
+    })
+    m = {"customer_id": "cust", "order_id": "ord", "order_date": "when",
+         "order_amount": "line", "product": "sku"}
+    res = build_canonical(df, m)
+    check("line-item build ok", res["ok"] is True)
+    check("one order after collapse", len(res["orders"]) == 1)
+    check("line prices summed to order total (100)",
+          float(res["orders"]["order_amount"].iloc[0]) == 100.0)
+    check("summed-lines warning present",
+          any("summed" in w.lower() for w in res["warnings"]))
+
+    # Repeated per-order TOTAL on every line -> must be kept once, NOT summed.
+    df2 = pd.DataFrame({
+        "cust": ["c1", "c1"], "ord": ["o1", "o1"],
+        "when": ["2025-01-01", "2025-01-01"],
+        "amt":  ["100", "100"], "sku": ["A", "B"],
+    })
+    m2 = {"customer_id": "cust", "order_id": "ord", "order_date": "when",
+          "order_amount": "amt", "product": "sku"}
+    res2 = build_canonical(df2, m2)
+    check("repeated total kept once (100, not 200)",
+          float(res2["orders"]["order_amount"].iloc[0]) == 100.0)
+    check("repeated total: no summed warning",
+          not any("summed" in w.lower() for w in res2["warnings"]))
+
+
+def test_au_shopify_export_end_to_end():
+    """A messy Shopify/WooCommerce-style AU export through the full pipeline:
+    DD/MM/YYYY dates, $ + thousands commas, a parenthesised refund, and a
+    multi-line order. Every number below is hand-computed."""
+    from src.data.ingest.builder import build_canonical
+    import pandas as pd
+    df = pd.DataFrame({
+        "Email":      ["ann@x.com", "ann@x.com", "ann@x.com", "bob@x.com", "bob@x.com"],
+        "Name":       ["#1001", "#1001", "#1002", "#2001", "#2002"],
+        "Created at": ["13/06/2025", "13/06/2025", "20/06/2025", "01/06/2025", "15/06/2025"],
+        "Total":      ["$1,200.00", "$300.00", "$50.00", "$80.00", "($20.00)"],
+        "Lineitem":   ["Sofa", "Cushion", "Lamp", "Mug", "Return"],
+    })
+    m = {"customer_id": "Email", "order_id": "Name", "order_date": "Created at",
+         "order_amount": "Total", "product": "Lineitem"}
+    res = build_canonical(df, m)
+    check("AU export builds ok", res["ok"] is True)
+
+    orders = res["orders"].set_index("order_id")
+    # Order #1001 = two lines (1200 + 300) summed = 1500.
+    check("multi-line order #1001 summed to 1500",
+          float(orders.loc["#1001", "order_amount"]) == 1500.0)
+    # Date read day-first: 13/06/2025 -> 13 June (13 > 12 forces day-first).
+    check("AU date #1001 = 13 June 2025",
+          orders.loc["#1001", "order_date"] == pd.Timestamp("2025-06-13"))
+    # Refund ($20) clipped to 0.
+    check("refund order #2002 clipped to 0",
+          float(orders.loc["#2002", "order_amount"]) == 0.0)
+
+    # FeatureMatrix RFM for Ann: 2 orders (#1001, #1002), monetary 1500+50 = 1550.
+    fm = res["matrix"]
+    feats = fm.frame.set_index("customer_id")
+    check("Ann frequency = 2 orders", int(feats.loc["ann@x.com", "frequency"]) == 2)
+    check("Ann monetary = 1550", float(feats.loc["ann@x.com", "monetary"]) == 1550.0)
+
+
+def test_build_canonical_line_grained_warns():
+    from src.data.ingest.builder import build_canonical
+    import pandas as pd
     df = pd.DataFrame({
         "cust": ["1", "1"], "ord": ["100", "100"],
-        "when": ["2024-01-02", "2024-01-02"], "amt": ["12.50", "8.00"]})
-    res = build_canonical(df, _GOOD_MAP)
-    check("line-grained still ok", res["ok"] is True)
-    check("line-grained warns about differing amounts",
-          any("more than one distinct amount" in w for w in res["warnings"]))
-    check("still deduped to one order", len(res["orders"]) == 1)
+        "when": ["2024-01-02", "2024-01-02"], "amt": ["10", "15"],
+    })
+    m = {"customer_id": "cust", "order_id": "ord",
+         "order_date": "when", "order_amount": "amt"}
+    res = build_canonical(df, m)
+    check("line-grained summed to 25", float(res["orders"]["order_amount"].iloc[0]) == 25.0)
+    check("line-grained warns about summing",
+          any("summed" in w.lower() for w in res["warnings"]))
 
 
 def test_validate_accounting_negative_with_currency():
@@ -348,6 +463,7 @@ def main():
     test_validate_happy()
     test_validate_missing_required()
     test_validate_bad_dates()
+    test_validate_au_dates()
     test_validate_negative_amount_warns()
     test_validate_builds_items()
     test_validate_empty_file()
@@ -357,6 +473,8 @@ def main():
     test_build_canonical_full()
     test_build_canonical_orders_only()
     test_build_canonical_dedups_orders()
+    test_build_canonical_sums_line_items()
+    test_au_shopify_export_end_to_end()
     test_build_canonical_rejects_bad()
     test_build_canonical_line_grained_warns()
     test_validate_accounting_negative_with_currency()

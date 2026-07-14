@@ -10,6 +10,42 @@ This file has two jobs:
 
 ## 📓 Project Journal
 
+### 2026-07-14 — BYOD validation hardening (real-data correctness)
+Depth pass over the ingestion firewall after the chat-first roadmap finished. Two
+probes against `validator.validate()` surfaced bugs that produced **wrong numbers
+without crashing or warning** — the worst failure mode for a tool whose promise is
+"never fabricate a figure", and both hit the most common real e-commerce export
+shapes for the Australian client.
+- **Date-locale bug (fixed).** `pd.to_datetime` defaults to month-first, so an AU
+  `03/04/2025` (3 April) was silently read as March 4 — corrupting recency, tenure,
+  avg-gap and churn (the whole RFM core). **`src/data/ingest/validator.py`** now has
+  `_infer_dayfirst(raw)`: it reads the evidence in the column — any first component
+  >12 ⇒ day-first, any second >12 ⇒ month-first, all-≤12 ⇒ genuinely ambiguous
+  (default day-first + a warning naming the column). No blind `dayfirst=True` (that
+  would mirror the bug onto US clients). Pure-ISO columns short-circuit to pandas'
+  default to avoid a spurious dayfirst reparse warning.
+- **Line-item revenue collapse (fixed).** A Shopify/WooCommerce export is
+  line-grained (one order across several rows, each its own line price). The builder
+  deduped on `order_id` keeping the FIRST amount, so a $100 order booked as 30+45+25
+  recorded **$30** — silently under-counting revenue/monetary/AOV. **`src/data/ingest/builder.py`**
+  replaces `drop_duplicates` with a per-order `_collapse_amount`: identical line
+  amounts are a repeated order total (kept once), differing amounts are line prices
+  (**summed**). One rule, correct for one-row-per-order, repeated-total, and true
+  line-item files with no double-counting; warns when it summed.
+- **Trust invariant held:** code still computes every figure over real data; this
+  makes the *inputs* correct on real export shapes and surfaces the remaining honest
+  uncertainty (all-ambiguous dates, summed orders) as operator warnings, never
+  silently.
+- **Testing:** `tests/test_ingest.py` extended — `test_validate_au_dates` (decisive
+  both ways, ambiguous default+warn, ISO clean), `test_build_canonical_sums_line_items`
+  (+ no-double-count regression), rewrote `test_build_canonical_line_grained_warns`
+  for the new summing behavior, and `test_au_shopify_export_end_to_end` (a messy AU
+  Shopify export — `$`/commas, parenthesised refund clipped to 0, DD/MM dates, a
+  multi-line order — driven through validator→builder→FeatureMatrix with every RFM
+  number hand-computed). Full ingest sweep green: `test_ingest` (104), `test_canonical`
+  (52), `test_mapping_persist` (9), `test_upload_flow`. Spec + plan in
+  `docs/superpowers/{specs,plans}/2026-07-14-byod-validation-hardening*`.
+
 ### 2026-07-13 — Intelligence Layer / Chat-First, Phase 9: Recipes + finishing pass
 The last roadmap item. A good grounded-query answer can now be saved as a named,
 one-click "recipe" that recomputes on live data — closing the chat-first roadmap.
