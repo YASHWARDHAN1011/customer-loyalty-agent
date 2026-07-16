@@ -64,7 +64,8 @@ _FIELD_LABEL = {
 
 # Session keys owned by an in-progress upload (confirm screen state).
 _UPLOAD_KEYS = ("upload_stage", "upload_df", "upload_filename", "upload_mapping",
-                "upload_profile", "upload_saved", "upload_errors", "upload_warnings")
+                "upload_profile", "upload_saved", "upload_errors", "upload_warnings",
+                "date_locale_choice", "order_grain_choice")
 
 
 def _clear_upload_state(*, reset_uploader=False):
@@ -129,9 +130,9 @@ def render_upload_section(run_analysis):
         st.rerun()
 
 
-def _build_and_activate(filename, df, mapping, run_analysis):
+def _build_and_activate(filename, df, mapping, run_analysis, *, dayfirst=None, grain=None):
     """Run apply_mapping; on success swap the active dataset + analyze."""
-    result = apply_mapping(df, mapping)
+    result = apply_mapping(df, mapping, dayfirst=dayfirst, grain=grain)
     if not result["ok"]:
         st.session_state["upload_stage"] = "confirm"
         st.session_state["upload_errors"] = result["errors"]
@@ -181,9 +182,54 @@ def render_confirm_gate(run_analysis):
     if picked:
         st.dataframe(df[picked].head(5), use_container_width=True)
 
+    # --- Locale & grain: show what build will do, let the operator override. ---
+    from src.data.ingest.validator import _infer_dayfirst
+    from src.data.ingest.builder import detect_grain
+
+    date_col = chosen.get("order_date")
+    if date_col and date_col in df.columns:
+        inferred_df, ambiguous = _infer_dayfirst(df[date_col])
+    else:
+        inferred_df, ambiguous = True, False
+    if ambiguous:
+        detected_locale = "ambiguous — assuming Day-first (DD/MM/YYYY)"
+    elif inferred_df:
+        detected_locale = "Day-first (DD/MM/YYYY)"
+    else:
+        detected_locale = "Month-first (MM/DD/YYYY)"
+    st.radio("Date format",
+             ["Auto", "Day-first (DD/MM/YYYY)", "Month-first (MM/DD/YYYY)"],
+             key="date_locale_choice")
+    st.caption(f"Detected: {detected_locale}")
+
+    detected_grain = detect_grain(df, chosen)
+    grain_label = ("line-item — lines will be summed per order"
+                   if detected_grain == "line_item" else "order-level (one row per order)")
+    st.radio("Order grain",
+             ["Auto", "Line-item — sum lines per order", "Order-level — one row per order"],
+             key="order_grain_choice")
+    st.caption(f"Detected: {grain_label}")
+
+    def _dayfirst_override():
+        c = st.session_state.get("date_locale_choice", "Auto")
+        if c.startswith("Day-first"):
+            return True
+        if c.startswith("Month-first"):
+            return False
+        return None
+
+    def _grain_override():
+        c = st.session_state.get("order_grain_choice", "Auto")
+        if c.startswith("Line-item"):
+            return "line_item"
+        if c.startswith("Order-level"):
+            return "order_level"
+        return None
+
     c1, c2 = st.columns(2)
     if c1.button("✅ Confirm & analyze", type="primary", use_container_width=True):
-        _build_and_activate(fname, df, chosen, run_analysis)
+        _build_and_activate(fname, df, chosen, run_analysis,
+                            dayfirst=_dayfirst_override(), grain=_grain_override())
         st.rerun()
     if c2.button("Cancel", use_container_width=True):
         _clear_upload_state(reset_uploader=True)
