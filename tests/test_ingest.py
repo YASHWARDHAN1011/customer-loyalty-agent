@@ -517,6 +517,56 @@ def test_fuzzy_map_finds_currency_column():
     assert m["order_currency"] == "Currency"
 
 
+def _cur_mapping():
+    return {"customer_id": "cust", "order_id": "ord", "order_date": "when",
+            "order_amount": "amt", "order_currency": "cur"}
+
+
+def test_validate_single_currency_labels():
+    from src.data.ingest.validator import validate
+    df = pd.DataFrame({"cust": ["c1", "c2"], "ord": ["o1", "o2"],
+                       "when": ["2025-01-01", "2025-01-02"], "amt": ["10", "20"],
+                       "cur": ["AUD", "AUD"]})
+    res = validate(df, _cur_mapping())
+    assert res.ok
+    assert res.reporting_currency == "AUD"
+
+
+def test_validate_multi_currency_gated_without_rates():
+    from src.data.ingest.validator import validate
+    df = pd.DataFrame({"cust": ["c1", "c2"], "ord": ["o1", "o2"],
+                       "when": ["2025-01-01", "2025-01-02"], "amt": ["10", "10"],
+                       "cur": ["USD", "AUD"]})
+    res = validate(df, _cur_mapping(), reporting_currency="AUD")
+    assert not res.ok
+    assert "currenc" in res.errors[0].lower()
+
+
+def test_validate_multi_currency_converts_with_rates():
+    from src.data.ingest.validator import validate
+    df = pd.DataFrame({"cust": ["c1", "c2"], "ord": ["o1", "o2"],
+                       "when": ["2025-01-01", "2025-01-02"], "amt": ["10", "10"],
+                       "cur": ["USD", "AUD"]})
+    res = validate(df, _cur_mapping(), reporting_currency="AUD",
+                   rates={"AUD": 1.0, "USD": 1.53})
+    assert res.ok
+    assert res.reporting_currency == "AUD"
+    got = dict(zip(res.orders["order_id"], res.orders["order_amount"].round(2)))
+    assert got["o1"] == 15.30   # USD 10 * 1.53
+    assert got["o2"] == 10.00   # AUD 10 * 1.0
+
+
+def test_validate_no_currency_column_unchanged():
+    from src.data.ingest.validator import validate
+    df = pd.DataFrame({"cust": ["c1"], "ord": ["o1"],
+                       "when": ["2025-01-01"], "amt": ["$10"]})
+    res = validate(df, {"customer_id": "cust", "order_id": "ord",
+                        "order_date": "when", "order_amount": "amt"})
+    assert res.ok
+    assert res.reporting_currency is None
+    assert res.orders["order_amount"].iloc[0] == 10.0
+
+
 def main():
     import tempfile
     with tempfile.TemporaryDirectory() as d:
@@ -554,6 +604,10 @@ def main():
     test_reader_accepts_file_like()
     test_mapper_has_order_currency_optional()
     test_fuzzy_map_finds_currency_column()
+    test_validate_single_currency_labels()
+    test_validate_multi_currency_gated_without_rates()
+    test_validate_multi_currency_converts_with_rates()
+    test_validate_no_currency_column_unchanged()
     print(f"\n{_passed} checks passed.")
 
 
