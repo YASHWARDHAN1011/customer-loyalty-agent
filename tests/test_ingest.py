@@ -503,6 +503,20 @@ def test_reader_accepts_file_like():
     check("file-like cells are strings", df["amt"].iloc[0] == "9.50")
 
 
+def test_mapper_has_order_currency_optional():
+    from src.data.ingest.mapper import CANONICAL_FIELDS
+    assert "order_currency" in CANONICAL_FIELDS
+    assert CANONICAL_FIELDS["order_currency"]["required"] is False
+
+
+def test_fuzzy_map_finds_currency_column():
+    from src.data.ingest.mapper import fuzzy_map
+    profile = [{"name": "Customer"}, {"name": "Order"}, {"name": "Date"},
+               {"name": "Total"}, {"name": "Currency"}]
+    m = fuzzy_map(profile)
+    assert m["order_currency"] == "Currency"
+
+
 def main():
     import tempfile
     with tempfile.TemporaryDirectory() as d:
@@ -538,6 +552,8 @@ def main():
     test_validate_accounting_negative_with_currency()
     test_validate_comma_decimal_warns()
     test_reader_accepts_file_like()
+    test_mapper_has_order_currency_optional()
+    test_fuzzy_map_finds_currency_column()
     print(f"\n{_passed} checks passed.")
 
 

@@ -58,7 +58,7 @@ _FIELD_LABEL = {
     "customer_id": "Customer ID", "order_id": "Order ID",
     "order_date": "Order date", "order_amount": "Order amount",
     "product": "Product (optional)", "category": "Category (optional)",
-    "quantity": "Quantity (optional)",
+    "quantity": "Quantity (optional)", "order_currency": "Currency (optional)",
 }
 
 
