@@ -10,6 +10,31 @@ This file has two jobs:
 
 ## 📓 Project Journal
 
+### 2026-07-16 — Fix: CSV export crashed on uploaded (canonical) data
+Found by runtime verification of the confirm-screen work: driving the full app
+through an upload → confirm → analyze flow crashed in `render_sidebar →
+generate_csv_export` with `KeyError: ['total_orders', 'dept_diversity',
+'total_items'] not in index`. `src/export/generator.py` still hardcoded the
+Instacart feature columns (the one BYOD re-anchoring the roadmap missed — `tools.py`,
+`deliverables.py`, and `interventions.py` were re-anchored in Phase 5 but the CSV
+export was not), so any real client dataset crashed the whole page the moment the
+sidebar rendered the download button.
+- **`generate_csv_export`** now emits fixed meta columns (Customer ID / Loyalty
+  Score / Tier / Is Power User) followed by **whatever feature columns the dataset
+  actually has**, each labelled through the existing `tool_context.feature_label`
+  (levers → `LEVER_LABELS`, extras like `total_orders`, else title-case). Instacart
+  demo output is unchanged; canonical RFM data (`frequency`/`monetary`/`recency_days`)
+  now exports instead of crashing.
+- **Testing:** NEW `tests/test_export.py` (AppTest) — a canonical scored_df exports
+  with no exception + correct headers, and an Instacart-shaped scored_df still keeps
+  its "Total Orders" label (7 checks). Verified end-to-end: full `app.py` boot →
+  seed upload → confirm → analyze now completes with 0 exceptions (previously
+  crashed here). Regression sweep green (export, full_numbers, upload_flow, ingest,
+  tools_canonical).
+- **Not touched (cosmetic, non-crashing):** `generate_summary_report` still prints
+  "Dataset: Instacart Grocery Platform" and Instacart-flavoured intervention copy —
+  a label nit, not a crash; left for a later polish pass.
+
 ### 2026-07-16 — Confirm-screen locale & grain override controls
 Follow-on depth to the BYOD hardening pass. The date-locale and order-grain
 decisions used to happen silently inside `build_canonical` *after* Confirm,
