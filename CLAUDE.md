@@ -33,9 +33,14 @@ sidebar rendered the download button.
   tools_canonical).
 - **Follow-up (same day):** `generate_summary_report`'s hardcoded
   "Dataset: Instacart Grocery Platform" now reads the active `dataset_label`
-  (falls back to "Your dataset"); covered by `test_export.py`. Still Instacart-
-  flavoured (non-crashing, left for later): the report's static "Recommended
-  Interventions" copy references departments/reorder-rate regardless of dataset.
+  (falls back to "Your dataset"). Its **"Recommended Interventions"** section is
+  now data-driven too — built from the dataset's own top power-vs-regular gaps via
+  the re-anchored `compute_intervention_gaps` + `template_for` (hand-authored
+  Instacart titles when present, generic "Grow <lever>" otherwise), each line
+  showing the real regulars-vs-power averages and % gap. Canonical data yields
+  e.g. "Grow Total Spend … a 511% gap"; the demo keeps "Drive Repeat Purchases".
+  Also converted `src/export/generator.py` from UTF-8-**BOM** to clean UTF-8 while
+  rewriting it. All covered by `tests/test_export.py` (15 checks).
 
 ### 2026-07-16 — Confirm-screen locale & grain override controls
 Follow-on depth to the BYOD hardening pass. The date-locale and order-grain

@@ -82,10 +82,38 @@ def test_summary_report_uses_active_dataset_label():
           "Instacart Grocery Platform" not in rpt)
 
 
+_INTERV = '''
+import os, sys
+sys.path.insert(0, os.getcwd())
+import pandas as pd, streamlit as st
+from src.export.generator import generate_summary_report
+st.session_state["scored_df"] = pd.DataFrame({"user_id": [1, 2, 3, 4],
+                                              "loyalty_score": [30.0, 50.0, 80.0, 95.0]})
+# Canonical levers only (frequency/monetary) — power clearly above regular.
+st.session_state["power"] = pd.DataFrame({"user_id": [3, 4], "frequency": [10, 12], "monetary": [500.0, 600.0]})
+st.session_state["regular"] = pd.DataFrame({"user_id": [1, 2], "frequency": [2, 3], "monetary": [80.0, 100.0]})
+st.session_state["dataset_label"] = "au_client.csv"
+st.session_state["_report"] = generate_summary_report()
+'''
+
+
+def test_summary_report_interventions_dataset_aware():
+    at = AppTest.from_string(_INTERV, default_timeout=60).run()
+    check("interventions: no exception", not at.exception)
+    rpt = at.session_state["_report"]
+    # The old hardcoded Instacart copy must be gone.
+    check("interventions: no hardcoded '< 5 orders' copy", "< 5 orders" not in rpt)
+    check("interventions: no hardcoded 'departments' copy", "departments" not in rpt)
+    # Data-driven from the dataset's real levers.
+    check("interventions: references a real lever (frequency)", "frequency" in rpt.lower())
+    check("interventions: shows a computed gap %", "% gap" in rpt)
+
+
 def main():
     test_export_canonical_no_keyerror()
     test_export_instacart_still_works()
     test_summary_report_uses_active_dataset_label()
+    test_summary_report_interventions_dataset_aware()
     print(f"\n{_passed} checks passed.")
 
 
