@@ -10,6 +10,41 @@ This file has two jobs:
 
 ## 📓 Project Journal
 
+### 2026-07-16 — Confirm-screen locale & grain override controls
+Follow-on depth to the BYOD hardening pass. The date-locale and order-grain
+decisions used to happen silently inside `build_canonical` *after* Confirm,
+surfacing only as post-hoc warnings once analysis had already run. Now the operator
+sees the detection and can override both on the confirm screen, before anything
+computes.
+- **Backend overrides (pure, `None`-default = unchanged auto behavior):**
+  `validate(df, mapping, dayfirst=None)` forces the date locale (skipping inference
+  + its ambiguity warning) when given `True`/`False`. `build_canonical(df, mapping,
+  dayfirst=None, grain=None)` threads `dayfirst` and adds `grain`: `None`=auto rule,
+  `"line_item"`=**always sum** lines per order (catches a line-item file whose lines
+  happen to cost the same — e.g. 2×$25 → $50, which the auto-rule would keep at $25),
+  `"order_level"`=keep first per order (warns if differing amounts were discarded).
+  New pure `detect_grain(df, mapping)` mirrors the auto-rule (any order id with >1
+  distinct cleaned amount ⇒ line-item) for the confirm-screen display; safe-defaults
+  to `order_level` when unmapped or on any error, never raises.
+  `apply_mapping(..., dayfirst=None, grain=None)` forwards both.
+- **Confirm screen (`src/ui/upload.py` `render_confirm_gate`):** two `st.radio`
+  controls after the column dropdowns/preview — "Date format" (Auto / Day-first /
+  Month-first) and "Order grain" (Auto / Line-item / Order-level), each with a
+  `Detected: …` caption computed live from the currently-chosen columns via
+  `_infer_dayfirst` / `detect_grain`. Stable option strings + a separate detected
+  caption (rather than a mutating "Auto (detected: …)" label) avoid a Streamlit
+  keyed-radio crash when the detected value changes. Confirm translates the two
+  selections to `dayfirst`/`grain` overrides → `_build_and_activate` → `apply_mapping`.
+  Both new session keys added to `_UPLOAD_KEYS` so a second upload never inherits the
+  first file's locale/grain choice. Saved-recipe fast path stays Auto (deliberate).
+- **Testing:** `tests/test_ingest.py` — `test_validate_dayfirst_override`,
+  `test_build_canonical_grain_override`, `test_detect_grain` (114 checks total).
+  `tests/test_upload_flow.py` — `test_apply_mapping_honors_overrides` (pure) +
+  `test_confirm_gate_shows_locale_and_grain_radios` (AppTest asserts both radios
+  render). Full sweep green (ingest 114, upload_flow, canonical 52, mapping_persist 9,
+  dataset_swap); app boots 0 exceptions. Spec + plan in
+  `docs/superpowers/{specs,plans}/2026-07-14-confirm-screen-locale-grain*`.
+
 ### 2026-07-14 — BYOD validation hardening (real-data correctness)
 Depth pass over the ingestion firewall after the chat-first roadmap finished. Two
 probes against `validator.validate()` surfaced bugs that produced **wrong numbers

@@ -75,11 +75,46 @@ def test_apply_mapping_failure_returns_errors():
     assert result["errors"]
     assert result["matrix"] is None
 
+def test_apply_mapping_honors_overrides():
+    csv = "c,o,when,amt,sku\nc1,o1,03/04/2025,25,A\nc1,o1,03/04/2025,25,B\n"
+    df = pd.read_csv(io.StringIO(csv), dtype=str)
+    m = {"customer_id": "c", "order_id": "o", "order_date": "when",
+         "order_amount": "amt", "product": "sku"}
+    with tempfile.TemporaryDirectory() as d:
+        store = os.path.join(d, "mappings.json")
+        # month-first => 03/04 is March 4; line_item => identical 25+25 summed to 50.
+        res = apply_mapping(df, m, store_path=store, dayfirst=False, grain="line_item")
+    assert res["ok"] is True
+    row = res["orders"].iloc[0]
+    assert float(row["order_amount"]) == 50.0
+    assert row["order_date"] == pd.Timestamp("2025-03-04")
+
 def test_confirm_gate_absent_on_demo_boot():
     at = AppTest.from_file("app.py", default_timeout=60).run()
     assert not at.exception, f"app raised: {at.exception}"
     # No confirm gate pending on a clean demo boot.
     assert "upload_stage" not in at.session_state or at.session_state["upload_stage"] is None
+
+def test_confirm_gate_shows_locale_and_grain_radios():
+    from streamlit.testing.v1 import AppTest
+    script = (
+        "import os, sys\n"
+        "sys.path.insert(0, os.getcwd())\n"
+        "import pandas as pd, streamlit as st\n"
+        "from src.ui.upload import render_confirm_gate\n"
+        "st.session_state['upload_stage'] = 'confirm'\n"
+        "st.session_state['upload_df'] = pd.DataFrame({'c':['c1','c1'],'o':['o1','o1'],"
+        "'when':['03/04/2025','03/04/2025'],'amt':['30','45'],'sku':['A','B']})\n"
+        "st.session_state['upload_mapping'] = {'customer_id':'c','order_id':'o',"
+        "'order_date':'when','order_amount':'amt','product':'sku'}\n"
+        "st.session_state['upload_filename'] = 'f.csv'\n"
+        "render_confirm_gate(lambda *a, **k: None)\n"
+    )
+    at = AppTest.from_string(script, default_timeout=60).run()
+    assert not at.exception, f"confirm gate raised: {at.exception}"
+    labels = [r.label for r in at.radio]
+    assert "Date format" in labels, labels
+    assert "Order grain" in labels, labels
 
 if __name__ == "__main__":
     test_app_boots_on_demo_zero_exceptions()
@@ -88,4 +123,6 @@ if __name__ == "__main__":
     test_prepare_upload_uses_saved_recipe_fast_path()
     test_apply_mapping_success_builds_canonical()
     test_apply_mapping_failure_returns_errors()
+    test_apply_mapping_honors_overrides()
+    test_confirm_gate_shows_locale_and_grain_radios()
     print("test_upload_flow: OK")
