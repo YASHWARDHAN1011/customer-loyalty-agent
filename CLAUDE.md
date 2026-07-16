@@ -31,9 +31,11 @@ sidebar rendered the download button.
   seed upload → confirm → analyze now completes with 0 exceptions (previously
   crashed here). Regression sweep green (export, full_numbers, upload_flow, ingest,
   tools_canonical).
-- **Not touched (cosmetic, non-crashing):** `generate_summary_report` still prints
-  "Dataset: Instacart Grocery Platform" and Instacart-flavoured intervention copy —
-  a label nit, not a crash; left for a later polish pass.
+- **Follow-up (same day):** `generate_summary_report`'s hardcoded
+  "Dataset: Instacart Grocery Platform" now reads the active `dataset_label`
+  (falls back to "Your dataset"); covered by `test_export.py`. Still Instacart-
+  flavoured (non-crashing, left for later): the report's static "Recommended
+  Interventions" copy references departments/reorder-rate regardless of dataset.
 
 ### 2026-07-16 — Confirm-screen locale & grain override controls
 Follow-on depth to the BYOD hardening pass. The date-locale and order-grain
