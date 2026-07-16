@@ -24,9 +24,15 @@ _CODE_TO_SYMBOL = {
     "EUR": "€", "GBP": "£", "JPY": "¥",
 }
 
-# Valid ISO 4217 currency codes (whitelist for the normalized check).
+# Valid ISO 4217 currency codes (whitelist so stray 3-letter text is NOT read as
+# a currency). Covers the majors + currencies a globally-selling store commonly
+# sees; extend as needed.
 _VALID_CODES = {
-    "USD", "AUD", "NZD", "CAD", "EUR", "GBP", "JPY",
+    "USD", "EUR", "GBP", "JPY", "AUD", "NZD", "CAD", "CHF", "CNY", "HKD",
+    "SGD", "INR", "SEK", "NOK", "DKK", "ZAR", "AED", "SAR", "MXN", "BRL",
+    "RUB", "KRW", "THB", "MYR", "IDR", "PHP", "PLN", "CZK", "HUF", "TRY",
+    "ILS", "TWD", "VND", "ARS", "CLP", "COP", "EGP", "PKR", "BDT", "LKR",
+    "NGN", "KES", "GHS", "QAR", "KWD", "BHD", "OMR", "JOD", "MAD", "RON",
 }
 
 

@@ -18,6 +18,9 @@ def test_normalize_iso_and_symbols():
     assert normalize_currency("") is None
     assert normalize_currency(None) is None
     assert normalize_currency("wat") is None
+    # Less-common but real ISO codes must still be recognized (not just the majors).
+    assert normalize_currency("sgd") == "SGD"
+    assert normalize_currency("CHF") == "CHF"
 
 
 def test_detect_currencies_sorted_distinct():
