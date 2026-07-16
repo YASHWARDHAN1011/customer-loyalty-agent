@@ -61,9 +61,31 @@ def test_export_instacart_still_works():
     check("instacart export: keeps Total Orders label", "Total Orders" in text)
 
 
+_REPORT = '''
+import os, sys
+sys.path.insert(0, os.getcwd())
+import pandas as pd, streamlit as st
+from src.export.generator import generate_summary_report
+st.session_state["scored_df"] = pd.DataFrame({"user_id": [1, 2], "loyalty_score": [40.0, 88.0]})
+st.session_state["power"] = pd.DataFrame({"user_id": [2]})
+st.session_state["dataset_label"] = "au_client.csv"
+st.session_state["_report"] = generate_summary_report()
+'''
+
+
+def test_summary_report_uses_active_dataset_label():
+    at = AppTest.from_string(_REPORT, default_timeout=60).run()
+    check("report: no exception", not at.exception)
+    rpt = at.session_state["_report"]
+    check("report: uses active dataset label", "au_client.csv" in rpt)
+    check("report: no hardcoded Instacart platform label",
+          "Instacart Grocery Platform" not in rpt)
+
+
 def main():
     test_export_canonical_no_keyerror()
     test_export_instacart_still_works()
+    test_summary_report_uses_active_dataset_label()
     print(f"\n{_passed} checks passed.")
 
 
