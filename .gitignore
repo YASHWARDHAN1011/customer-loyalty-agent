@@ -32,3 +32,4 @@ _sl_run.log
 
 # Local agent skills (installed per-machine, not project code)
 .agents/
+skills-lock.json
