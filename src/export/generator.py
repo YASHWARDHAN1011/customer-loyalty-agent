@@ -90,10 +90,11 @@ def generate_summary_report():
         return "No analysis run yet."
 
     now = datetime.now().strftime("%B %d, %Y at %H:%M")
+    dataset = st.session_state.get('dataset_label', 'Your dataset')
 
     report = f"""# Customer Loyalty Intelligence Report
 **Generated:** {now}
-**Dataset:** Instacart Grocery Platform
+**Dataset:** {dataset}
 
 ---
 
