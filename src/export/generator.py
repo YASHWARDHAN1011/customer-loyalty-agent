@@ -41,23 +41,23 @@ def generate_csv_export():
         export_df['user_id'].isin(power_ids)
     ).astype(int)
 
-    # Select and rename columns for clean export
-    export_cols = {
-        'user_id': 'Customer ID',
-        'loyalty_score': 'Loyalty Score (0-100)',
-        'loyalty_tier': 'Loyalty Tier',
-        'is_power_user': 'Is Power User (1=Yes)',
-        'total_orders': 'Total Orders',
-        'avg_days_between_orders': 'Avg Days Between Orders',
-        'reorder_rate': 'Reorder Rate',
-        'dept_diversity': 'Departments Shopped',
-        'avg_basket_size': 'Avg Basket Size',
-        'total_items': 'Total Items Purchased'
-    }
+    # Fixed meta columns, then WHATEVER feature columns this dataset actually has
+    # (labelled via feature_label) — so the export works on canonical RFM data as
+    # well as the Instacart demo instead of KeyError-ing on hardcoded columns.
+    from src.agent.tool_context import feature_label
 
-    final = export_df[list(export_cols.keys())].rename(
-        columns=export_cols
-    )
+    _META = {'user_id', 'customer_id', 'loyalty_score',
+             'loyalty_tier', 'is_power_user'}
+    feature_cols = [c for c in export_df.columns if c not in _META]
+
+    final = pd.DataFrame({
+        'Customer ID': export_df['user_id'],
+        'Loyalty Score (0-100)': export_df['loyalty_score'],
+        'Loyalty Tier': export_df['loyalty_tier'],
+        'Is Power User (1=Yes)': export_df['is_power_user'],
+    })
+    for c in feature_cols:
+        final[feature_label(c)] = export_df[c]
 
     # Convert to CSV bytes
     # io.StringIO is an in-memory string buffer
