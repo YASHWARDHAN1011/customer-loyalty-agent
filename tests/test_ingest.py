@@ -567,6 +567,50 @@ def test_validate_no_currency_column_unchanged():
     assert res.orders["order_amount"].iloc[0] == 10.0
 
 
+def test_validate_ambiguous_not_selected_as_base():
+    # "$" (ambiguous) is the plurality but must NOT become the base currency.
+    # With the fix, the base is a real code, the "$" rows are unconvertible, and
+    # because they exceed the 10% bad-amount threshold the file is rejected —
+    # never silently accepted with a "$?" reporting currency.
+    from src.data.ingest.validator import validate
+    df = pd.DataFrame({"cust": ["c1", "c2", "c3", "c4", "c5"],
+                       "ord": ["o1", "o2", "o3", "o4", "o5"],
+                       "when": ["2025-01-01"] * 5, "amt": ["10"] * 5,
+                       "cur": ["$", "$", "$", "USD", "AUD"]})
+    res = validate(df, _cur_mapping(), rates={"USD": 1.0, "AUD": 1.0})
+    assert not res.ok
+    assert res.reporting_currency is None
+    assert res.reporting_currency != "$?"
+
+
+def test_validate_ambiguous_rows_dropped_below_threshold():
+    # A single "$" row among 11 AUD rows (~8% < 10%): the "$" row is dropped with
+    # a warning, the rest convert, and the file is accepted in AUD.
+    from src.data.ingest.validator import validate
+    n = 11
+    df = pd.DataFrame({"cust": [f"c{i}" for i in range(n + 1)],
+                       "ord": [f"o{i}" for i in range(n + 1)],
+                       "when": ["2025-01-01"] * (n + 1), "amt": ["10"] * (n + 1),
+                       "cur": ["AUD"] * n + ["$"]})
+    res = validate(df, _cur_mapping(), reporting_currency="AUD",
+                   rates={"AUD": 1.0, "USD": 1.5})
+    assert res.ok
+    assert res.reporting_currency == "AUD"
+    assert len(res.orders) == n            # the "$" row dropped
+    assert any("$" in w for w in res.warnings)
+
+
+def test_validate_zero_rate_gates():
+    from src.data.ingest.validator import validate
+    df = pd.DataFrame({"cust": ["c1", "c2"], "ord": ["o1", "o2"],
+                       "when": ["2025-01-01", "2025-01-02"], "amt": ["10", "10"],
+                       "cur": ["USD", "AUD"]})
+    res = validate(df, _cur_mapping(), reporting_currency="AUD",
+                   rates={"AUD": 1.0, "USD": 0.0})
+    assert not res.ok
+    assert "currenc" in res.errors[0].lower()
+
+
 def main():
     import tempfile
     with tempfile.TemporaryDirectory() as d:
@@ -608,6 +652,9 @@ def main():
     test_validate_multi_currency_gated_without_rates()
     test_validate_multi_currency_converts_with_rates()
     test_validate_no_currency_column_unchanged()
+    test_validate_ambiguous_not_selected_as_base()
+    test_validate_ambiguous_rows_dropped_below_threshold()
+    test_validate_zero_rate_gates()
     print(f"\n{_passed} checks passed.")
 
 

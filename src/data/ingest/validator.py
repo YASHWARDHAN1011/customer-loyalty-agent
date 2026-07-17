@@ -148,12 +148,17 @@ def validate(df: pd.DataFrame, mapping: dict, dayfirst=None, reporting_currency=
             resolved_currency = reporting_currency or detected[0]
         elif len(detected) > 1:
             codes = df[curr_col].map(normalize_currency)
-            base = reporting_currency or str(codes.value_counts().idxmax())
+            # Never let the ambiguous "$?" sentinel become the base currency —
+            # doing so would give it a 1.0 rate and keep those rows instead of
+            # dropping them (a silent-wrong-number path). There is always >=1
+            # non-ambiguous code here since len(detected) > 1.
+            base = reporting_currency or str(
+                codes[codes != AMBIGUOUS].value_counts().idxmax())
             rate_map = dict(rates or {})
             rate_map.setdefault(base, 1.0)
             required = [c for c in detected if c != AMBIGUOUS]
-            missing = [c for c in required if not rate_map.get(c)]
-            if rates is None or missing:
+            unrated = [c for c in required if not rate_map.get(c)]
+            if rates is None or unrated:
                 errors.append(
                     f"This file contains {len(detected)} currencies "
                     f"({', '.join(detected)}). Enter a conversion rate for each "
