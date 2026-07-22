@@ -674,6 +674,9 @@ def test_build_canonical_warns_on_customer_and_date_conflicts():
     assert any("order id" in w.lower() for w in res["warnings"]), res["warnings"]
     kept = dict(zip(res["orders"]["order_id"], res["orders"]["customer_id"]))
     assert kept["o1"] == "c1"   # first customer kept, unchanged behavior
+    # A pure customer conflict (rows share a date) must NOT raise the date warning.
+    assert not any("different dates" in w.lower() for w in res["warnings"]), \
+        res["warnings"]
 
     # (b) One order_id spanning TWO dates -> soft date warning.
     df_date = pd.DataFrame({
