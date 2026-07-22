@@ -109,11 +109,32 @@ def test_summary_report_interventions_dataset_aware():
     check("interventions: shows a computed gap %", "% gap" in rpt)
 
 
+_CANONICAL_CURRENCY = '''
+import os, sys
+sys.path.insert(0, os.getcwd())
+import pandas as pd, streamlit as st
+from src.export.generator import generate_csv_export
+st.session_state["scored_df"] = pd.DataFrame({
+    "user_id": [1, 2], "monetary": [100.0, 50.0], "loyalty_score": [80.0, 20.0]})
+st.session_state["power_user_ids"] = {1}
+st.session_state["reporting_currency"] = "AUD"
+st.session_state["_csv_out"] = generate_csv_export()
+'''
+
+
+def test_csv_export_labels_monetary_currency():
+    at = AppTest.from_string(_CANONICAL_CURRENCY, default_timeout=60).run()
+    check("currency export: no exception", not at.exception)
+    header = at.session_state["_csv_out"].decode("utf-8").splitlines()[0]
+    check("currency export: monetary header carries (AUD)", "(AUD)" in header)
+
+
 def main():
     test_export_canonical_no_keyerror()
     test_export_instacart_still_works()
     test_summary_report_uses_active_dataset_label()
     test_summary_report_interventions_dataset_aware()
+    test_csv_export_labels_monetary_currency()
     print(f"\n{_passed} checks passed.")
 
 

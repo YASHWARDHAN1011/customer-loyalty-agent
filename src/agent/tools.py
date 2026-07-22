@@ -830,6 +830,18 @@ def _gq_fmt(v):
     return f"{v:,.2f}" if isinstance(v, float) else f"{v:,}"
 
 
+_MONETARY_COLS = {"monetary", "avg_order_value", "order_amount"}
+
+
+def _gq_money_prefix(metric, agg):
+    """Reporting-currency symbol to prefix a monetary figure, or '' if the metric
+    isn't monetary / the agg is a count / no reporting currency is set."""
+    if agg == "count" or metric not in _MONETARY_COLS:
+        return ""
+    from src.data.ingest.currency import currency_label
+    return currency_label(st.session_state.get("reporting_currency"))
+
+
 def _gq_corr_label(r):
     """Plain-language strength + direction for a Pearson r."""
     a = abs(r)
@@ -908,16 +920,21 @@ def run_grounded_query(
     kind = result["kind"]
 
     if kind == "scalar":
+        money = _gq_money_prefix(metric, agg)
         label = f"{agg.title()} of {metric.replace('_', ' ')}"
         st.session_state.ui_history.append({
             "role": "assistant", "type": "text",
-            "content": (f"### 📐 {label}\n\n**{_gq_fmt(result['value'])}**  \n"
+            "content": (f"### 📐 {label}\n\n**{money}{_gq_fmt(result['value'])}**  \n"
                         f"_computed over {result['n']:,} rows_"),
         })
+        rc = st.session_state.get("reporting_currency")
         return {
             "status": "success", "kind": "scalar", "computed": label,
             "value": result["value"], "n": result["n"], "query": result["query"],
-            "instruction": "State this computed figure in one sentence. Use ONLY this number.",
+            "currency": rc if money else None,
+            "instruction": (
+                "State this computed figure in one sentence. Use ONLY this number"
+                + (f", expressed in {rc}." if money else ".")),
         }
 
     if kind == "table":
