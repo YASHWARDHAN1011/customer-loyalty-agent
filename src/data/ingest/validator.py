@@ -145,7 +145,27 @@ def validate(df: pd.DataFrame, mapping: dict, dayfirst=None, reporting_currency=
             detect_currencies, convert_amounts, normalize_currency, AMBIGUOUS)
         detected = detect_currencies(df, mapping)
         if len(detected) == 1:
-            resolved_currency = reporting_currency or detected[0]
+            only = detected[0]
+            # A single-currency file normally needs no conversion. But an override
+            # reporting currency that DIFFERS from the file's actual currency (e.g. a
+            # saved multi-currency recipe replayed on a file that now holds one
+            # foreign currency) must still convert — otherwise amounts stay in the
+            # source currency but get LABELLED as the reporting one (silent wrong
+            # number). Gate on a missing rate exactly like the multi-currency path.
+            if reporting_currency and reporting_currency != only and only != AMBIGUOUS:
+                rate_map = dict(rates or {})
+                rate_map.setdefault(reporting_currency, 1.0)
+                if not rate_map.get(only):
+                    errors.append(
+                        f"This file is in {only} but the reporting currency is "
+                        f"{reporting_currency}. Enter a {only}->{reporting_currency} "
+                        f"conversion rate before analysis can run.")
+                    return ValidationResult(False, errors, warnings)
+                amt = convert_amounts(amt, df[curr_col].map(normalize_currency),
+                                      rate_map)
+                resolved_currency = reporting_currency
+            else:
+                resolved_currency = reporting_currency or only
         elif len(detected) > 1:
             codes = df[curr_col].map(normalize_currency)
             # Never let the ambiguous "$?" sentinel become the base currency —

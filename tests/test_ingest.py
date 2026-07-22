@@ -611,6 +611,27 @@ def test_validate_zero_rate_gates():
     assert "currenc" in res.errors[0].lower()
 
 
+def test_validate_single_currency_override_converts():
+    # A file that is entirely USD, but the reporting currency is AUD (e.g. a saved
+    # multi-currency recipe replayed on a now-single-currency file). Amounts must be
+    # CONVERTED, not just relabelled — otherwise USD amounts read as AUD.
+    from src.data.ingest.validator import validate
+    df = pd.DataFrame({"cust": ["c1", "c2"], "ord": ["o1", "o2"],
+                       "when": ["2025-01-01", "2025-01-02"], "amt": ["10", "20"],
+                       "cur": ["USD", "USD"]})
+    # No USD rate -> gated, not silently mislabelled.
+    gated = validate(df, _cur_mapping(), reporting_currency="AUD")
+    assert not gated.ok
+    assert "usd" in gated.errors[0].lower()
+    # With a rate -> converts USD->AUD.
+    res = validate(df, _cur_mapping(), reporting_currency="AUD",
+                   rates={"AUD": 1.0, "USD": 1.5})
+    assert res.ok
+    assert res.reporting_currency == "AUD"
+    got = dict(zip(res.orders["order_id"], res.orders["order_amount"].round(2)))
+    assert got["o1"] == 15.0 and got["o2"] == 30.0
+
+
 def test_build_canonical_threads_currency_end_to_end():
     # Messy AU export: AUD + USD, two single-line orders. Consolidate to AUD.
     df = pd.DataFrame({
@@ -679,6 +700,7 @@ def main():
     test_validate_ambiguous_not_selected_as_base()
     test_validate_ambiguous_rows_dropped_below_threshold()
     test_validate_zero_rate_gates()
+    test_validate_single_currency_override_converts()
     test_build_canonical_threads_currency_end_to_end()
     print(f"\n{_passed} checks passed.")
 
