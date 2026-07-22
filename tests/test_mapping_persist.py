@@ -64,6 +64,34 @@ def test_corrupt_store_degrades(tmpdir):
           load_mapping(["a", "b"], path=path) == {"customer_id": "a"})
 
 
+def test_recipe_round_trips_currency(tmpdir):
+    from src.data.ingest.mapping_store import save_mapping, load_recipe
+    path = os.path.join(tmpdir, "m.json")
+    headers = ["a", "b", "c"]
+    save_mapping(headers, {"customer_id": "a"}, path=path,
+                 extras={"reporting_currency": "AUD",
+                         "rates": {"AUD": 1.0, "USD": 1.5}})
+    rec = load_recipe(headers, path=path)
+    check("recipe carries mapping", rec["mapping"]["customer_id"] == "a")
+    check("recipe carries reporting currency", rec["reporting_currency"] == "AUD")
+    check("recipe carries rates", rec["rates"]["USD"] == 1.5)
+
+
+def test_load_recipe_pre_currency_recipe(tmpdir):
+    from src.data.ingest.mapping_store import save_mapping, load_recipe
+    path = os.path.join(tmpdir, "m.json")
+    save_mapping(["a"], {"customer_id": "a"}, path=path)  # no extras
+    rec = load_recipe(["a"], path=path)
+    check("pre-currency recipe still loads", rec["mapping"]["customer_id"] == "a")
+    check("pre-currency recipe has no currency", rec.get("reporting_currency") is None)
+
+
+def test_load_recipe_missing_returns_none(tmpdir):
+    from src.data.ingest.mapping_store import load_recipe
+    path = os.path.join(tmpdir, "nope.json")
+    check("absent recipe -> None", load_recipe(["x"], path=path) is None)
+
+
 if __name__ == "__main__":
     import tempfile
     test_fingerprint_order_insensitive()
@@ -71,5 +99,8 @@ if __name__ == "__main__":
         test_save_load_roundtrip(d)
         test_store_never_holds_rows(d)
         test_corrupt_store_degrades(d)
+        test_recipe_round_trips_currency(d)
+        test_load_recipe_pre_currency_recipe(d)
+        test_load_recipe_missing_returns_none(d)
     test_missing_store_returns_none()
     print(f"\n{_passed} checks passed.")

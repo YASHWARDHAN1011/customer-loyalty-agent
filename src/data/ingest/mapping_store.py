@@ -31,12 +31,17 @@ def _load_all(path: str) -> dict:
         return {}
 
 
-def save_mapping(headers, mapping: dict, path: str = _STORE) -> str:
-    """Persist `mapping` under this header set's fingerprint. Returns the
-    fingerprint. Best-effort: swallows any I/O error."""
+def save_mapping(headers, mapping: dict, path: str = _STORE,
+                 extras: dict = None) -> str:
+    """Persist `mapping` (plus any `extras`, e.g. reporting_currency + rates)
+    under this header set's fingerprint. Returns the fingerprint. Best-effort:
+    swallows any I/O error."""
     fp = fingerprint(headers)
     data = _load_all(path)
-    data[fp] = {"mapping": mapping}
+    entry = {"mapping": mapping}
+    if extras:
+        entry.update(extras)
+    data[fp] = entry
     try:
         directory = os.path.dirname(path)
         if directory:
@@ -51,3 +56,9 @@ def save_mapping(headers, mapping: dict, path: str = _STORE) -> str:
 def load_mapping(headers, path: str = _STORE):
     """Return the saved mapping for this header set's fingerprint, or None."""
     return _load_all(path).get(fingerprint(headers), {}).get("mapping")
+
+
+def load_recipe(headers, path: str = _STORE):
+    """Return the full saved entry ({'mapping', optional 'reporting_currency',
+    'rates'}) for this header set, or None if there is none."""
+    return _load_all(path).get(fingerprint(headers)) or None
