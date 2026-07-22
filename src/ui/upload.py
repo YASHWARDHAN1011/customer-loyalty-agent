@@ -12,7 +12,7 @@ from src.data.ingest.profiler import profile_columns
 from src.data.ingest.mapper import propose_mapping, CANONICAL_FIELDS  # noqa: F401
 from src.data.ingest.builder import build_canonical
 from src.data.ingest.mapping_store import (
-    load_mapping, save_mapping, _STORE,
+    load_mapping, load_recipe, save_mapping, _STORE,
 )
 from src.data.ingest.reader import read_table
 from src.data.app_data import features_from_matrix, load_demo_app_data
@@ -22,33 +22,48 @@ from src.ui.dataset import set_active_dataset
 def prepare_upload(df, generate_fn, store_path=_STORE):
     """Profile the uploaded frame and resolve its column mapping.
 
-    Returns a dict: {stage, mapping, source, profile, saved}.
+    Returns a dict: {stage, mapping, source, profile, saved, reporting_currency,
+    rates}.
     - If a saved recipe matches the header fingerprint -> stage "build",
-      saved=True (fast path, skip confirm).
+      saved=True (fast path, skip confirm), replaying its stored
+      reporting_currency + rates.
     - Else propose a mapping (LLM via generate_fn, deterministic fuzzy fallback
-      inside propose_mapping) -> stage "confirm", saved=False.
+      inside propose_mapping) -> stage "confirm", saved=False, currency None
+      (set on the confirm screen).
     """
     profile = profile_columns(df)
     headers = list(df.columns)
-    saved = load_mapping(headers, path=store_path)
-    if saved:
-        return {"stage": "build", "mapping": saved, "source": "saved",
-                "profile": profile, "saved": True}
+    recipe = load_recipe(headers, path=store_path)
+    if recipe and recipe.get("mapping"):
+        return {"stage": "build", "mapping": recipe["mapping"], "source": "saved",
+                "profile": profile, "saved": True,
+                "reporting_currency": recipe.get("reporting_currency"),
+                "rates": recipe.get("rates")}
     proposed = propose_mapping(profile, generate_fn=generate_fn)
     return {"stage": "confirm", "mapping": proposed["mapping"],
-            "source": proposed["source"], "profile": profile, "saved": False}
+            "source": proposed["source"], "profile": profile, "saved": False,
+            "reporting_currency": None, "rates": None}
 
 
-def apply_mapping(df, mapping, store_path=_STORE, dayfirst=None, grain=None):
+def apply_mapping(df, mapping, store_path=_STORE, dayfirst=None, grain=None,
+                  reporting_currency=None, rates=None):
     """Validate + build canonical for a confirmed mapping.
 
-    `dayfirst`/`grain` are optional operator overrides (None = auto). On success,
-    persists the mapping recipe for next time. Returns the builder result dict
-    {ok, errors, warnings, orders, order_items, matrix}.
+    `dayfirst`/`grain`/`reporting_currency`/`rates` are optional operator
+    overrides (None = auto / single-currency). On success, persists the mapping
+    recipe (with any currency settings) for next time. Returns the builder result
+    dict {ok, errors, warnings, orders, order_items, matrix, reporting_currency}.
     """
-    result = build_canonical(df, mapping, dayfirst=dayfirst, grain=grain)
+    result = build_canonical(df, mapping, dayfirst=dayfirst, grain=grain,
+                             reporting_currency=reporting_currency, rates=rates)
     if result["ok"]:
-        save_mapping(list(df.columns), mapping, path=store_path)
+        extras = {}
+        if reporting_currency:
+            extras["reporting_currency"] = reporting_currency
+        if rates:
+            extras["rates"] = rates
+        save_mapping(list(df.columns), mapping, path=store_path,
+                     extras=extras or None)
     return result
 
 
