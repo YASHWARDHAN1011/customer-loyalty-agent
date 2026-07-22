@@ -10,6 +10,39 @@ This file has two jobs:
 
 ## 📓 Project Journal
 
+### 2026-07-23 — BYOD depth pass: per-line customer/date conflict warnings
+The last collapse dimension made honest. When an upload is line-grained (several
+rows per `order_id`), `build_canonical` collapses to one row per order via
+`.agg(customer_id="first", order_date="first", order_amount=<grain>)`. The amount
+side already warned when it summed differing line prices, but the other two
+collapsed columns were silent: if one `order_id` spanned multiple **customers** or
+multiple **dates**, the builder kept the first and discarded the rest with no
+notice — a silent misattribution/wrong-number, the exact failure class this tool
+promises never to make.
+- **`src/data/ingest/builder.py`** — `build_canonical` now counts, from the
+  pre-collapse validated table, how many orders span more than one customer
+  (`cust_conflicts`) or more than one date (`date_conflicts`)
+  (`groupby("order_id")[col].nunique(dropna=False) > 1`), independent of the amount
+  `grain` branch. Keep-first is **unchanged**; two conditional warnings are appended
+  to the existing warnings list: a **strong** customer message ("…more than one
+  customer…the first was kept. This usually means the Order ID column isn't unique
+  per order or is mapped to the wrong column — verify the Order ID mapping.") and a
+  **soft** date message ("…rows with different dates (e.g. partial shipments); the
+  first date was kept."). Fires for all grains; **silent on order-grained files**
+  (one row per order → nunique 1), so the Instacart demo and any clean upload are
+  unaffected.
+- **Trust invariant:** still keep-first, still exception-free — the previously
+  hidden discard is now surfaced so the operator can catch a broken Order ID mapping
+  or acknowledge a benign partial-shipment date split.
+- **Testing:** `tests/test_ingest.py` — `test_build_canonical_warns_on_customer_and_
+  date_conflicts` (customer conflict fires the strong warning + first customer kept +
+  no spurious date warning; date-only conflict fires the soft warning + no customer
+  warning; clean order-grained file fires neither). Full sweep green (ingest 114,
+  canonical 52, upload_flow, mapping_persist 15, export 17, tools_canonical); app
+  boots 0 exceptions (demo unaffected). Built via subagent-driven-dev (implementer →
+  spec review ✅ → Opus quality review "approve"). Spec + plan in
+  `docs/superpowers/{specs,plans}/2026-07-23-per-line-conflict-warnings*`.
+
 ### 2026-07-22 — BYOD depth pass: multi-currency consolidation
 A real Australian client's export can mix currencies (AUD + USD + NZD across
 rows). Summed blindly, that silently corrupts the `monetary` RFM figure the chat
