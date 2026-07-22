@@ -72,6 +72,10 @@ def build_canonical(df, mapping, dayfirst=None, grain=None,
 
     rows_per_order = result.orders.groupby("order_id").size()
     amt_nunique = result.orders.groupby("order_id")["order_amount"].nunique()
+    cust_conflicts = int(
+        (result.orders.groupby("order_id")["customer_id"].nunique(dropna=False) > 1).sum())
+    date_conflicts = int(
+        (result.orders.groupby("order_id")["order_date"].nunique(dropna=False) > 1).sum())
 
     if grain == "line_item":
         amount_agg = "sum"
@@ -103,6 +107,16 @@ def build_canonical(df, mapping, dayfirst=None, grain=None,
                    order_amount=("order_amount", amount_agg))
               .reset_index())
     orders = orders[["customer_id", "order_id", "order_date", "order_amount"]]
+    if cust_conflicts:
+        warnings.append(
+            f"{cust_conflicts} order(s) had more than one customer across their "
+            f"rows; the first customer was kept. This usually means the Order ID "
+            f"column isn't unique per order or is mapped to the wrong column — "
+            f"verify the Order ID mapping.")
+    if date_conflicts:
+        warnings.append(
+            f"{date_conflicts} order(s) had rows with different dates (e.g. partial "
+            f"shipments); the first date was kept.")
     # build_feature_matrix is exception-safe on validated input (amounts numeric,
     # dates parsed, ids non-null, orders non-empty after dedup).
     matrix = build_feature_matrix(orders, result.order_items)

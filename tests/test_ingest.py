@@ -656,6 +656,56 @@ def test_build_canonical_threads_currency_end_to_end():
     assert round(monetary["c2"], 2) == 20.0   # USD 10 * 2.0
 
 
+def test_build_canonical_warns_on_customer_and_date_conflicts():
+    from src.data.ingest.builder import build_canonical
+    mapping = {"customer_id": "cust", "order_id": "ord",
+               "order_date": "when", "order_amount": "amt"}
+
+    # (a) One order_id spanning TWO customers -> strong customer warning, first kept.
+    df_cust = pd.DataFrame({
+        "cust": ["c1", "c2", "c3"],
+        "ord":  ["o1", "o1", "o2"],
+        "when": ["2025-01-01", "2025-01-01", "2025-01-02"],
+        "amt":  ["10", "10", "20"]})
+    res = build_canonical(df_cust, mapping)
+    assert res["ok"] is True
+    assert any("more than one customer" in w.lower() for w in res["warnings"]), \
+        res["warnings"]
+    assert any("order id" in w.lower() for w in res["warnings"]), res["warnings"]
+    kept = dict(zip(res["orders"]["order_id"], res["orders"]["customer_id"]))
+    assert kept["o1"] == "c1"   # first customer kept, unchanged behavior
+    # A pure customer conflict (rows share a date) must NOT raise the date warning.
+    assert not any("different dates" in w.lower() for w in res["warnings"]), \
+        res["warnings"]
+
+    # (b) One order_id spanning TWO dates -> soft date warning.
+    df_date = pd.DataFrame({
+        "cust": ["c1", "c1", "c2"],
+        "ord":  ["o1", "o1", "o2"],
+        "when": ["2025-01-01", "2025-01-05", "2025-02-01"],
+        "amt":  ["10", "10", "20"]})
+    res = build_canonical(df_date, mapping)
+    assert res["ok"] is True
+    assert any("different dates" in w.lower() for w in res["warnings"]), \
+        res["warnings"]
+    # A pure date conflict must NOT raise the customer warning.
+    assert not any("more than one customer" in w.lower() for w in res["warnings"]), \
+        res["warnings"]
+
+    # (c) Clean order-grained file (one row per order) -> neither warning.
+    df_clean = pd.DataFrame({
+        "cust": ["c1", "c2"],
+        "ord":  ["o1", "o2"],
+        "when": ["2025-01-01", "2025-01-02"],
+        "amt":  ["10", "20"]})
+    res = build_canonical(df_clean, mapping)
+    assert res["ok"] is True
+    assert not any("more than one customer" in w.lower() for w in res["warnings"]), \
+        res["warnings"]
+    assert not any("different dates" in w.lower() for w in res["warnings"]), \
+        res["warnings"]
+
+
 def main():
     import tempfile
     with tempfile.TemporaryDirectory() as d:
@@ -702,6 +752,7 @@ def main():
     test_validate_zero_rate_gates()
     test_validate_single_currency_override_converts()
     test_build_canonical_threads_currency_end_to_end()
+    test_build_canonical_warns_on_customer_and_date_conflicts()
     print(f"\n{_passed} checks passed.")
 
 
