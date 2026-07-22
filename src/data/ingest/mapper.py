@@ -35,6 +35,9 @@ CANONICAL_FIELDS = {
                              "class", "group"]},
     "quantity": {"required": False,
                  "aliases": ["quantity", "qty", "count", "units", "number"]},
+    "order_currency": {"required": False,
+                       "aliases": ["currency", "curr", "ccy", "iso_currency",
+                                   "currency_code"]},
 }
 
 _MATCH_THRESHOLD = 0.5

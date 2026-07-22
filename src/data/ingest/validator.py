@@ -63,6 +63,7 @@ class ValidationResult:
     warnings: list = field(default_factory=list)
     orders: pd.DataFrame = None       # canonical orders when ok
     order_items: pd.DataFrame = None  # canonical items when optional cols mapped
+    reporting_currency: str = None    # resolved reporting currency (label/metadata)
 
 
 def _clean_amount(series: pd.Series) -> pd.Series:
@@ -81,7 +82,7 @@ def _clean_amount(series: pd.Series) -> pd.Series:
     return pd.to_numeric(cleaned, errors="coerce")
 
 
-def validate(df: pd.DataFrame, mapping: dict, dayfirst=None) -> ValidationResult:
+def validate(df: pd.DataFrame, mapping: dict, dayfirst=None, reporting_currency=None, rates=None) -> ValidationResult:
     errors, warnings = [], []
 
     missing = [f for f in REQUIRED if not mapping.get(f)]
@@ -132,6 +133,66 @@ def validate(df: pd.DataFrame, mapping: dict, dayfirst=None) -> ValidationResult
 
     raw_amt = df[mapping["order_amount"]]
     amt = _clean_amount(raw_amt)
+
+    # --- Currency consolidation. Active ONLY when a currency column is mapped;
+    # single-currency and no-column files are byte-for-byte unchanged. Conversion
+    # happens here (all amount coercion lives in the validator) so every check
+    # below sees final reporting-currency amounts. ---
+    resolved_currency = reporting_currency
+    curr_col = mapping.get("order_currency")
+    if curr_col and curr_col in df.columns:
+        from src.data.ingest.currency import (
+            detect_currencies, convert_amounts, normalize_currency, AMBIGUOUS)
+        detected = detect_currencies(df, mapping)
+        if len(detected) == 1:
+            only = detected[0]
+            # A single-currency file normally needs no conversion. But an override
+            # reporting currency that DIFFERS from the file's actual currency (e.g. a
+            # saved multi-currency recipe replayed on a file that now holds one
+            # foreign currency) must still convert — otherwise amounts stay in the
+            # source currency but get LABELLED as the reporting one (silent wrong
+            # number). Gate on a missing rate exactly like the multi-currency path.
+            if reporting_currency and reporting_currency != only and only != AMBIGUOUS:
+                rate_map = dict(rates or {})
+                rate_map.setdefault(reporting_currency, 1.0)
+                if not rate_map.get(only):
+                    errors.append(
+                        f"This file is in {only} but the reporting currency is "
+                        f"{reporting_currency}. Enter a {only}->{reporting_currency} "
+                        f"conversion rate before analysis can run.")
+                    return ValidationResult(False, errors, warnings)
+                amt = convert_amounts(amt, df[curr_col].map(normalize_currency),
+                                      rate_map)
+                resolved_currency = reporting_currency
+            else:
+                resolved_currency = reporting_currency or only
+        elif len(detected) > 1:
+            codes = df[curr_col].map(normalize_currency)
+            # Never let the ambiguous "$?" sentinel become the base currency —
+            # doing so would give it a 1.0 rate and keep those rows instead of
+            # dropping them (a silent-wrong-number path). There is always >=1
+            # non-ambiguous code here since len(detected) > 1.
+            base = reporting_currency or str(
+                codes[codes != AMBIGUOUS].value_counts().idxmax())
+            rate_map = dict(rates or {})
+            rate_map.setdefault(base, 1.0)
+            required = [c for c in detected if c != AMBIGUOUS]
+            unrated = [c for c in required if not rate_map.get(c)]
+            if rates is None or unrated:
+                errors.append(
+                    f"This file contains {len(detected)} currencies "
+                    f"({', '.join(detected)}). Enter a conversion rate for each "
+                    f"(relative to {base}) on the confirm screen before analysis "
+                    f"can run.")
+                return ValidationResult(False, errors, warnings)
+            if AMBIGUOUS in detected and not rate_map.get(AMBIGUOUS):
+                n_amb = int((codes == AMBIGUOUS).sum())
+                warnings.append(
+                    f"{n_amb} order(s) use an ambiguous '$' currency with no rate "
+                    f"and were dropped. Assign a rate to '$?' to include them.")
+            amt = convert_amounts(amt, codes, rate_map)
+            resolved_currency = base
+
     bad_amt = amt.isna() & raw_amt.notna() & (raw_amt.astype(str).str.strip() != "")
     if len(df) and bad_amt.mean() > _FAIL_FRACTION:
         errors.append(
@@ -184,4 +245,5 @@ def validate(df: pd.DataFrame, mapping: dict, dayfirst=None) -> ValidationResult
             items["quantity"] = 1
         items = items[items["order_id"].isin(orders["order_id"])].reset_index(drop=True)
 
-    return ValidationResult(True, [], warnings, orders, items)
+    return ValidationResult(True, [], warnings, orders, items,
+                            reporting_currency=resolved_currency)

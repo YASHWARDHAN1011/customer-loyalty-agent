@@ -503,6 +503,159 @@ def test_reader_accepts_file_like():
     check("file-like cells are strings", df["amt"].iloc[0] == "9.50")
 
 
+def test_mapper_has_order_currency_optional():
+    from src.data.ingest.mapper import CANONICAL_FIELDS
+    assert "order_currency" in CANONICAL_FIELDS
+    assert CANONICAL_FIELDS["order_currency"]["required"] is False
+
+
+def test_fuzzy_map_finds_currency_column():
+    from src.data.ingest.mapper import fuzzy_map
+    profile = [{"name": "Customer"}, {"name": "Order"}, {"name": "Date"},
+               {"name": "Total"}, {"name": "Currency"}]
+    m = fuzzy_map(profile)
+    assert m["order_currency"] == "Currency"
+
+
+def _cur_mapping():
+    return {"customer_id": "cust", "order_id": "ord", "order_date": "when",
+            "order_amount": "amt", "order_currency": "cur"}
+
+
+def test_validate_single_currency_labels():
+    from src.data.ingest.validator import validate
+    df = pd.DataFrame({"cust": ["c1", "c2"], "ord": ["o1", "o2"],
+                       "when": ["2025-01-01", "2025-01-02"], "amt": ["10", "20"],
+                       "cur": ["AUD", "AUD"]})
+    res = validate(df, _cur_mapping())
+    assert res.ok
+    assert res.reporting_currency == "AUD"
+
+
+def test_validate_multi_currency_gated_without_rates():
+    from src.data.ingest.validator import validate
+    df = pd.DataFrame({"cust": ["c1", "c2"], "ord": ["o1", "o2"],
+                       "when": ["2025-01-01", "2025-01-02"], "amt": ["10", "10"],
+                       "cur": ["USD", "AUD"]})
+    res = validate(df, _cur_mapping(), reporting_currency="AUD")
+    assert not res.ok
+    assert "currenc" in res.errors[0].lower()
+
+
+def test_validate_multi_currency_converts_with_rates():
+    from src.data.ingest.validator import validate
+    df = pd.DataFrame({"cust": ["c1", "c2"], "ord": ["o1", "o2"],
+                       "when": ["2025-01-01", "2025-01-02"], "amt": ["10", "10"],
+                       "cur": ["USD", "AUD"]})
+    res = validate(df, _cur_mapping(), reporting_currency="AUD",
+                   rates={"AUD": 1.0, "USD": 1.53})
+    assert res.ok
+    assert res.reporting_currency == "AUD"
+    got = dict(zip(res.orders["order_id"], res.orders["order_amount"].round(2)))
+    assert got["o1"] == 15.30   # USD 10 * 1.53
+    assert got["o2"] == 10.00   # AUD 10 * 1.0
+
+
+def test_validate_no_currency_column_unchanged():
+    from src.data.ingest.validator import validate
+    df = pd.DataFrame({"cust": ["c1"], "ord": ["o1"],
+                       "when": ["2025-01-01"], "amt": ["$10"]})
+    res = validate(df, {"customer_id": "cust", "order_id": "ord",
+                        "order_date": "when", "order_amount": "amt"})
+    assert res.ok
+    assert res.reporting_currency is None
+    assert res.orders["order_amount"].iloc[0] == 10.0
+
+
+def test_validate_ambiguous_not_selected_as_base():
+    # "$" (ambiguous) is the plurality but must NOT become the base currency.
+    # With the fix, the base is a real code, the "$" rows are unconvertible, and
+    # because they exceed the 10% bad-amount threshold the file is rejected —
+    # never silently accepted with a "$?" reporting currency.
+    from src.data.ingest.validator import validate
+    df = pd.DataFrame({"cust": ["c1", "c2", "c3", "c4", "c5"],
+                       "ord": ["o1", "o2", "o3", "o4", "o5"],
+                       "when": ["2025-01-01"] * 5, "amt": ["10"] * 5,
+                       "cur": ["$", "$", "$", "USD", "AUD"]})
+    res = validate(df, _cur_mapping(), rates={"USD": 1.0, "AUD": 1.0})
+    assert not res.ok
+    assert res.reporting_currency is None
+    assert res.reporting_currency != "$?"
+
+
+def test_validate_ambiguous_rows_dropped_below_threshold():
+    # A single "$" row among 11 AUD rows (~8% < 10%): the "$" row is dropped with
+    # a warning, the rest convert, and the file is accepted in AUD.
+    from src.data.ingest.validator import validate
+    n = 11
+    df = pd.DataFrame({"cust": [f"c{i}" for i in range(n + 1)],
+                       "ord": [f"o{i}" for i in range(n + 1)],
+                       "when": ["2025-01-01"] * (n + 1), "amt": ["10"] * (n + 1),
+                       "cur": ["AUD"] * n + ["$"]})
+    res = validate(df, _cur_mapping(), reporting_currency="AUD",
+                   rates={"AUD": 1.0, "USD": 1.5})
+    assert res.ok
+    assert res.reporting_currency == "AUD"
+    assert len(res.orders) == n            # the "$" row dropped
+    assert any("$" in w for w in res.warnings)
+
+
+def test_validate_zero_rate_gates():
+    from src.data.ingest.validator import validate
+    df = pd.DataFrame({"cust": ["c1", "c2"], "ord": ["o1", "o2"],
+                       "when": ["2025-01-01", "2025-01-02"], "amt": ["10", "10"],
+                       "cur": ["USD", "AUD"]})
+    res = validate(df, _cur_mapping(), reporting_currency="AUD",
+                   rates={"AUD": 1.0, "USD": 0.0})
+    assert not res.ok
+    assert "currenc" in res.errors[0].lower()
+
+
+def test_validate_single_currency_override_converts():
+    # A file that is entirely USD, but the reporting currency is AUD (e.g. a saved
+    # multi-currency recipe replayed on a now-single-currency file). Amounts must be
+    # CONVERTED, not just relabelled — otherwise USD amounts read as AUD.
+    from src.data.ingest.validator import validate
+    df = pd.DataFrame({"cust": ["c1", "c2"], "ord": ["o1", "o2"],
+                       "when": ["2025-01-01", "2025-01-02"], "amt": ["10", "20"],
+                       "cur": ["USD", "USD"]})
+    # No USD rate -> gated, not silently mislabelled.
+    gated = validate(df, _cur_mapping(), reporting_currency="AUD")
+    assert not gated.ok
+    assert "usd" in gated.errors[0].lower()
+    # With a rate -> converts USD->AUD.
+    res = validate(df, _cur_mapping(), reporting_currency="AUD",
+                   rates={"AUD": 1.0, "USD": 1.5})
+    assert res.ok
+    assert res.reporting_currency == "AUD"
+    got = dict(zip(res.orders["order_id"], res.orders["order_amount"].round(2)))
+    assert got["o1"] == 15.0 and got["o2"] == 30.0
+
+
+def test_build_canonical_threads_currency_end_to_end():
+    # Messy AU export: AUD + USD, two single-line orders. Consolidate to AUD.
+    df = pd.DataFrame({
+        "cust": ["c1", "c2"], "ord": ["o1", "o2"],
+        "when": ["03/04/2025", "05/04/2025"],
+        "amt": ["$10.00", "US$10.00"], "cur": ["AUD", "USD"]})
+    mapping = {"customer_id": "cust", "order_id": "ord", "order_date": "when",
+               "order_amount": "amt", "order_currency": "cur"}
+    from src.data.ingest.builder import build_canonical
+    # No rates -> gated failure surfaced as a clean error, not a crash.
+    gated = build_canonical(df, mapping, reporting_currency="AUD")
+    assert gated["ok"] is False
+    assert gated["reporting_currency"] is None
+    # With rates -> converts and builds a matrix; monetary is in AUD.
+    ok = build_canonical(df, mapping, reporting_currency="AUD",
+                         rates={"AUD": 1.0, "USD": 2.0})
+    assert ok["ok"] is True
+    assert ok["reporting_currency"] == "AUD"
+    monetary = dict(zip(ok["matrix"].frame["customer_id"],
+                        ok["matrix"].frame["monetary"]))
+    assert round(monetary["c1"], 2) == 10.0   # AUD 10
+    assert round(monetary["c2"], 2) == 20.0   # USD 10 * 2.0
+
+
 def main():
     import tempfile
     with tempfile.TemporaryDirectory() as d:
@@ -538,6 +691,17 @@ def main():
     test_validate_accounting_negative_with_currency()
     test_validate_comma_decimal_warns()
     test_reader_accepts_file_like()
+    test_mapper_has_order_currency_optional()
+    test_fuzzy_map_finds_currency_column()
+    test_validate_single_currency_labels()
+    test_validate_multi_currency_gated_without_rates()
+    test_validate_multi_currency_converts_with_rates()
+    test_validate_no_currency_column_unchanged()
+    test_validate_ambiguous_not_selected_as_base()
+    test_validate_ambiguous_rows_dropped_below_threshold()
+    test_validate_zero_rate_gates()
+    test_validate_single_currency_override_converts()
+    test_build_canonical_threads_currency_end_to_end()
     print(f"\n{_passed} checks passed.")
 
 

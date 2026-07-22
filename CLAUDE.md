@@ -10,6 +10,61 @@ This file has two jobs:
 
 ## 📓 Project Journal
 
+### 2026-07-22 — BYOD depth pass: multi-currency consolidation
+A real Australian client's export can mix currencies (AUD + USD + NZD across
+rows). Summed blindly, that silently corrupts the `monetary` RFM figure the chat
+agent reports — the exact "wrong number, no crash, no warning" failure this tool
+promises never to make. This pass folds a mixed-currency upload into ONE operator-
+chosen reporting currency, gated so an unconverted mixed sum can never reach
+analysis. Built TDD, task-by-task (spec + plan in
+`docs/superpowers/{specs,plans}/2026-07-16-multi-currency-handling*`).
+- **`src/data/ingest/currency.py`** (NEW, pure): `normalize_currency` (ISO codes +
+  known symbols → uppercase code; a bare `$` → the `AMBIGUOUS` `"$?"` sentinel;
+  blank/unknown → None), `detect_currencies` (sorted distinct codes in the mapped
+  column, never raises), `convert_amounts` (row amount × its code's flat rate;
+  missing rate → NaN, which the validator treats as a bad amount), `currency_label`
+  (code → display symbol, e.g. `AUD`→`A$`).
+- **`src/data/ingest/mapper.py`** — new optional canonical field `order_currency`
+  (aliases currency/curr/ccy/…); `src/ui/upload.py` `_FIELD_LABEL` gained its
+  confirm-screen label.
+- **`validator.py`** — `validate(…, reporting_currency=None, rates=None)` +
+  `ValidationResult.reporting_currency`. Active ONLY when a currency column is
+  mapped (single-currency / no-column files are byte-for-byte unchanged). One
+  currency → labelled, no conversion. Multiple → base = operator choice or the
+  most-frequent code; **gates to a clean human error** unless every non-base
+  currency has a non-zero rate; ambiguous `$?` rows with no rate are dropped with a
+  warning. Conversion happens here (all amount coercion lives in the validator) so
+  every downstream check sees final reporting-currency amounts. An extra hardening
+  commit (`eb83200`) also stops `$?` ever being auto-selected as the base.
+- **`builder.py`** — `build_canonical` threads `reporting_currency`/`rates` and
+  returns `reporting_currency` in its result dict (both paths).
+- **`mapping_store.py`** — `save_mapping(…, extras=…)` persists reporting currency
+  + rates alongside the mapping; new `load_recipe` returns the full entry. So a
+  same-shaped re-upload replays the saved rates instead of re-asking (pre-currency
+  recipes still load).
+- **`src/ui/upload.py`** — `prepare_upload` fast-path replays saved currency;
+  `apply_mapping` threads + persists it; the **confirm screen** detects currencies,
+  shows a "reporting currency" selectbox + a `1 <code> = ? <base>` rate box per
+  other currency, and **disables Confirm until every rate is set**; `rate_*` +
+  `reporting_currency_choice` keys are cleaned on cancel/new-file. `src/ui/dataset.py`
+  `set_active_dataset` stores `reporting_currency` in session so downstream surfaces
+  can label money.
+- **Labelling** — `src/agent/tools.py` `run_grounded_query` prefixes a monetary
+  scalar with the reporting symbol (`A$…`) and tells the model the currency;
+  `src/export/generator.py` suffixes monetary CSV headers (`Monetary (AUD)`) and
+  adds a "Reporting currency" line to the summary report. The demo (no reporting
+  currency) is unchanged everywhere.
+- **Trust invariant held:** every figure is still computed over real data; this
+  makes a mixed-currency *input* correct or **blocks it** with an honest operator
+  prompt — never a silent wrong number.
+- **Testing:** NEW `tests/test_currency.py`; extended `test_ingest` (114),
+  `test_mapping_persist` (15), `test_upload_flow` (+ AppTest currency gate),
+  `test_export` (17), `test_tools_canonical` (monetary scalar carries `A$`). Full
+  no-network sweep green. **Runtime-verified** (the "run the real app after BYOD
+  changes" lesson): a 3-currency upload gates without rates, converts correctly
+  with them (USD 10×1.5=15, NZD 20×1.1=22, AUD unchanged), and the full `app.py`
+  boots with 0 exceptions.
+
 ### 2026-07-16 — Fix: CSV export crashed on uploaded (canonical) data
 Found by runtime verification of the confirm-screen work: driving the full app
 through an upload → confirm → analyze flow crashed in `render_sidebar →

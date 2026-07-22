@@ -48,6 +48,7 @@ def generate_csv_export():
 
     _META = {'user_id', 'customer_id', 'loyalty_score',
              'loyalty_tier', 'is_power_user'}
+    _MONEY_COLS = {'monetary', 'avg_order_value', 'total_spend'}
     feature_cols = [c for c in export_df.columns if c not in _META]
 
     final = pd.DataFrame({
@@ -56,8 +57,12 @@ def generate_csv_export():
         'Loyalty Tier': export_df['loyalty_tier'],
         'Is Power User (1=Yes)': export_df['is_power_user'],
     })
+    code = st.session_state.get('reporting_currency')
     for c in feature_cols:
-        final[feature_label(c)] = export_df[c]
+        label = feature_label(c)
+        if code and c in _MONEY_COLS:
+            label = f"{label} ({code})"
+        final[label] = export_df[c]
 
     # Convert to CSV bytes
     # io.StringIO is an in-memory string buffer
@@ -91,10 +96,13 @@ def generate_summary_report():
 
     now = datetime.now().strftime("%B %d, %Y at %H:%M")
     dataset = st.session_state.get('dataset_label', 'Your dataset')
+    code = st.session_state.get('reporting_currency')
+    currency_line = (f"\n**Reporting currency:** {code} "
+                     f"(all monetary figures converted)") if code else ""
 
     report = f"""# Customer Loyalty Intelligence Report
 **Generated:** {now}
-**Dataset:** {dataset}
+**Dataset:** {dataset}{currency_line}
 
 ---
 

@@ -116,6 +116,63 @@ def test_confirm_gate_shows_locale_and_grain_radios():
     assert "Date format" in labels, labels
     assert "Order grain" in labels, labels
 
+_CUR_CSV = (
+    "Cust,Ord,When,Paid,Cur\n"
+    "c1,o1,2025-01-01,10.00,USD\n"
+    "c2,o2,2025-01-02,10.00,AUD\n"
+)
+_CUR_MAPPING = {"customer_id": "Cust", "order_id": "Ord", "order_date": "When",
+                "order_amount": "Paid", "order_currency": "Cur"}
+
+def test_apply_mapping_forwards_and_persists_currency():
+    df = pd.read_csv(io.StringIO(_CUR_CSV), dtype=str)
+    with tempfile.TemporaryDirectory() as d:
+        store = os.path.join(d, "mappings.json")
+        result = apply_mapping(df, _CUR_MAPPING, store_path=store,
+                               reporting_currency="AUD",
+                               rates={"AUD": 1.0, "USD": 1.5})
+        assert result["ok"] is True
+        assert result["reporting_currency"] == "AUD"
+        saved = json.load(open(store))
+    entry = next(iter(saved.values()))
+    assert entry["reporting_currency"] == "AUD"
+    assert entry["rates"]["USD"] == 1.5
+
+def test_prepare_upload_fast_path_returns_saved_currency():
+    df = pd.read_csv(io.StringIO(_CUR_CSV), dtype=str)
+    with tempfile.TemporaryDirectory() as d:
+        store = os.path.join(d, "mappings.json")
+        from src.data.ingest.mapping_store import save_mapping
+        save_mapping(list(df.columns), _CUR_MAPPING, path=store,
+                     extras={"reporting_currency": "AUD",
+                             "rates": {"AUD": 1.0, "USD": 1.5}})
+        state = prepare_upload(df, generate_fn=_fake_generate, store_path=store)
+    assert state["stage"] == "build"
+    assert state["reporting_currency"] == "AUD"
+    assert state["rates"]["USD"] == 1.5
+
+def test_confirm_gate_shows_currency_controls_and_gates():
+    from streamlit.testing.v1 import AppTest
+    script = (
+        "import os, sys\n"
+        "sys.path.insert(0, os.getcwd())\n"
+        "import pandas as pd, streamlit as st\n"
+        "from src.ui.upload import render_confirm_gate\n"
+        "st.session_state['upload_stage'] = 'confirm'\n"
+        "st.session_state['upload_df'] = pd.DataFrame({'c':['c1','c2'],'o':['o1','o2'],"
+        "'when':['2025-01-01','2025-01-02'],'amt':['10','10'],'cur':['USD','AUD']})\n"
+        "st.session_state['upload_mapping'] = {'customer_id':'c','order_id':'o',"
+        "'order_date':'when','order_amount':'amt','order_currency':'cur'}\n"
+        "st.session_state['upload_filename'] = 'f.csv'\n"
+        "render_confirm_gate(lambda *a, **k: None)\n"
+    )
+    at = AppTest.from_string(script, default_timeout=60).run()
+    assert not at.exception, f"confirm gate raised: {at.exception}"
+    assert "Reporting currency" in [s.label for s in at.selectbox], \
+        [s.label for s in at.selectbox]
+    assert any(n.label.startswith("1 USD") for n in at.number_input), \
+        [n.label for n in at.number_input]
+
 if __name__ == "__main__":
     test_app_boots_on_demo_zero_exceptions()
     test_confirm_gate_absent_on_demo_boot()
@@ -125,4 +182,7 @@ if __name__ == "__main__":
     test_apply_mapping_failure_returns_errors()
     test_apply_mapping_honors_overrides()
     test_confirm_gate_shows_locale_and_grain_radios()
+    test_apply_mapping_forwards_and_persists_currency()
+    test_prepare_upload_fast_path_returns_saved_currency()
+    test_confirm_gate_shows_currency_controls_and_gates()
     print("test_upload_flow: OK")

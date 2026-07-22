@@ -49,6 +49,11 @@ r["happy"] = tools.run_happy_path(3)
 # Phase 8 grounded query — scalar aggregate, correlation, order_items degrade.
 r["gq_scalar"] = tools.run_grounded_query(
     table="customers", operation="aggregate", metric="frequency", agg="mean")
+# Multi-currency labelling — a monetary scalar carries the reporting currency.
+# Run BEFORE the correlation so the correlate query stays the last stashed one.
+st.session_state["reporting_currency"] = "AUD"
+r["gq_money"] = tools.run_grounded_query(
+    table="customers", operation="aggregate", metric="monetary", agg="mean")
 r["gq_corr"] = tools.run_grounded_query(
     table="customers", operation="correlate", column_a="frequency", column_b="monetary")
 r["gq_badcol"] = tools.run_grounded_query(
@@ -141,3 +146,11 @@ assert lgq and isinstance(lgq.get("query"), dict), f"last_grounded_query stashed
 assert lgq["query"]["operation"] == "correlate", "stash holds the LAST successful query"
 assert isinstance(lgq.get("label"), str) and lgq["label"], "stash carries a human label"
 print("test_tools_canonical: last_grounded_query stash OK")
+
+# --- Multi-currency: a monetary scalar is labelled with the reporting currency ---
+assert r["gq_money"]["status"] == "success", f"grounded money query failed: {r['gq_money']}"
+assert r["gq_money"].get("currency") == "AUD", f"scalar carries currency: {r['gq_money']}"
+_texts = [m.get("content", "") for m in at.session_state["ui_history"]
+          if isinstance(m.get("content"), str)]
+assert any("A$" in t for t in _texts), f"a rendered card shows the A$ symbol: {_texts}"
+print("test_tools_canonical: run_grounded_query monetary scalar carries currency")
