@@ -611,6 +611,30 @@ def test_validate_zero_rate_gates():
     assert "currenc" in res.errors[0].lower()
 
 
+def test_build_canonical_threads_currency_end_to_end():
+    # Messy AU export: AUD + USD, two single-line orders. Consolidate to AUD.
+    df = pd.DataFrame({
+        "cust": ["c1", "c2"], "ord": ["o1", "o2"],
+        "when": ["03/04/2025", "05/04/2025"],
+        "amt": ["$10.00", "US$10.00"], "cur": ["AUD", "USD"]})
+    mapping = {"customer_id": "cust", "order_id": "ord", "order_date": "when",
+               "order_amount": "amt", "order_currency": "cur"}
+    from src.data.ingest.builder import build_canonical
+    # No rates -> gated failure surfaced as a clean error, not a crash.
+    gated = build_canonical(df, mapping, reporting_currency="AUD")
+    assert gated["ok"] is False
+    assert gated["reporting_currency"] is None
+    # With rates -> converts and builds a matrix; monetary is in AUD.
+    ok = build_canonical(df, mapping, reporting_currency="AUD",
+                         rates={"AUD": 1.0, "USD": 2.0})
+    assert ok["ok"] is True
+    assert ok["reporting_currency"] == "AUD"
+    monetary = dict(zip(ok["matrix"].frame["customer_id"],
+                        ok["matrix"].frame["monetary"]))
+    assert round(monetary["c1"], 2) == 10.0   # AUD 10
+    assert round(monetary["c2"], 2) == 20.0   # USD 10 * 2.0
+
+
 def main():
     import tempfile
     with tempfile.TemporaryDirectory() as d:
@@ -655,6 +679,7 @@ def main():
     test_validate_ambiguous_not_selected_as_base()
     test_validate_ambiguous_rows_dropped_below_threshold()
     test_validate_zero_rate_gates()
+    test_build_canonical_threads_currency_end_to_end()
     print(f"\n{_passed} checks passed.")
 
 

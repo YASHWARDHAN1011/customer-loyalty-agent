@@ -46,17 +46,24 @@ def detect_grain(df, mapping):
         return "order_level"
 
 
-def build_canonical(df, mapping, dayfirst=None, grain=None) -> dict:
+def build_canonical(df, mapping, dayfirst=None, grain=None,
+                    reporting_currency=None, rates=None) -> dict:
     """Validate + build. Returns {ok, errors, warnings, orders, order_items,
-    matrix}; matrix/orders are None when validation fails.
+    matrix, reporting_currency}; matrix/orders are None when validation fails.
 
     dayfirst: override date locale (None = auto-detect).
     grain: None = auto / "line_item" = always-sum / "order_level" = keep-first.
+    reporting_currency: consolidate all amounts into this currency (None = auto
+      from a single detected currency; a multi-currency file then needs `rates`).
+    rates: {code: rate-to-reporting-currency} for multi-currency files. Missing
+      rates gate the build to a clean error (never a silent wrong number).
     """
-    result = validate(df, mapping, dayfirst=dayfirst)
+    result = validate(df, mapping, dayfirst=dayfirst,
+                      reporting_currency=reporting_currency, rates=rates)
     if not result.ok:
         return {"ok": False, "errors": result.errors, "warnings": result.warnings,
-                "orders": None, "order_items": None, "matrix": None}
+                "orders": None, "order_items": None, "matrix": None,
+                "reporting_currency": result.reporting_currency}
 
     from src.data.canonical import build_feature_matrix
 
@@ -100,4 +107,5 @@ def build_canonical(df, mapping, dayfirst=None, grain=None) -> dict:
     # dates parsed, ids non-null, orders non-empty after dedup).
     matrix = build_feature_matrix(orders, result.order_items)
     return {"ok": True, "errors": [], "warnings": warnings,
-            "orders": orders, "order_items": result.order_items, "matrix": matrix}
+            "orders": orders, "order_items": result.order_items, "matrix": matrix,
+            "reporting_currency": result.reporting_currency}
