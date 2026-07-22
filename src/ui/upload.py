@@ -80,7 +80,8 @@ _FIELD_LABEL = {
 # Session keys owned by an in-progress upload (confirm screen state).
 _UPLOAD_KEYS = ("upload_stage", "upload_df", "upload_filename", "upload_mapping",
                 "upload_profile", "upload_saved", "upload_errors", "upload_warnings",
-                "date_locale_choice", "order_grain_choice")
+                "date_locale_choice", "order_grain_choice",
+                "reporting_currency_choice")
 
 
 def _clear_upload_state(*, reset_uploader=False):
@@ -91,7 +92,8 @@ def _clear_upload_state(*, reset_uploader=False):
     """
     for k in _UPLOAD_KEYS:
         st.session_state.pop(k, None)
-    for k in [k for k in list(st.session_state) if k.startswith("map_")]:
+    for k in [k for k in list(st.session_state)
+              if k.startswith("map_") or k.startswith("rate_")]:
         st.session_state.pop(k, None)
     if reset_uploader:
         st.session_state["uploader_nonce"] = st.session_state.get("uploader_nonce", 0) + 1
@@ -139,15 +141,19 @@ def render_upload_section(run_analysis):
         st.session_state["upload_profile"] = prep["profile"]
         st.session_state["upload_saved"] = prep["saved"]
         if prep["stage"] == "build":
-            _build_and_activate(up.name, df, prep["mapping"], run_analysis)
+            _build_and_activate(up.name, df, prep["mapping"], run_analysis,
+                                reporting_currency=prep.get("reporting_currency"),
+                                rates=prep.get("rates"))
         else:
             st.session_state["upload_stage"] = "confirm"
         st.rerun()
 
 
-def _build_and_activate(filename, df, mapping, run_analysis, *, dayfirst=None, grain=None):
+def _build_and_activate(filename, df, mapping, run_analysis, *, dayfirst=None,
+                        grain=None, reporting_currency=None, rates=None):
     """Run apply_mapping; on success swap the active dataset + analyze."""
-    result = apply_mapping(df, mapping, dayfirst=dayfirst, grain=grain)
+    result = apply_mapping(df, mapping, dayfirst=dayfirst, grain=grain,
+                           reporting_currency=reporting_currency, rates=rates)
     if not result["ok"]:
         st.session_state["upload_stage"] = "confirm"
         st.session_state["upload_errors"] = result["errors"]
@@ -156,7 +162,8 @@ def _build_and_activate(filename, df, mapping, run_analysis, *, dayfirst=None, g
     set_active_dataset(st.session_state, orders=result["orders"],
                        order_items=result["order_items"], features=feats,
                        available=available, active_levers=active,
-                       label=filename, source="upload")
+                       label=filename, source="upload",
+                       reporting_currency=result.get("reporting_currency"))
     warnings = result.get("warnings", [])
     _clear_upload_state()
     st.session_state["upload_warnings"] = warnings
@@ -241,10 +248,43 @@ def render_confirm_gate(run_analysis):
             return "order_level"
         return None
 
+    # --- Currencies: detect + collect operator rates; gate Confirm on completeness. ---
+    from src.data.ingest.currency import (
+        detect_currencies, normalize_currency, AMBIGUOUS)
+    detected_currencies = detect_currencies(df, chosen)
+    reporting_currency = None
+    rates = None
+    currency_ready = True
+    if len(detected_currencies) == 1:
+        reporting_currency = detected_currencies[0]
+        st.caption(f"💱 All orders are in {reporting_currency}. No conversion needed.")
+    elif len(detected_currencies) > 1:
+        st.markdown("**💱 Currencies** — this file mixes currencies. Pick the "
+                    "reporting currency and enter a rate for every other one.")
+        counts = df[chosen["order_currency"]].map(normalize_currency).value_counts()
+        base = st.selectbox("Reporting currency", detected_currencies, index=0,
+                            key="reporting_currency_choice")
+        rates = {base: 1.0}
+        for code in detected_currencies:
+            if code == base:
+                continue
+            n = int(counts.get(code, 0))
+            r = st.number_input(f"1 {code} = ? {base}  ({n:,} orders)",
+                                min_value=0.0, value=0.0, step=0.01,
+                                format="%.4f", key=f"rate_{code}")
+            rates[code] = r
+            if code != AMBIGUOUS and not r:
+                currency_ready = False
+        reporting_currency = base
+        if not currency_ready:
+            st.warning("Enter a non-zero rate for every currency before analyzing.")
+
     c1, c2 = st.columns(2)
-    if c1.button("✅ Confirm & analyze", type="primary", use_container_width=True):
+    if c1.button("✅ Confirm & analyze", type="primary", use_container_width=True,
+                 disabled=not currency_ready):
         _build_and_activate(fname, df, chosen, run_analysis,
-                            dayfirst=_dayfirst_override(), grain=_grain_override())
+                            dayfirst=_dayfirst_override(), grain=_grain_override(),
+                            reporting_currency=reporting_currency, rates=rates)
         st.rerun()
     if c2.button("Cancel", use_container_width=True):
         _clear_upload_state(reset_uploader=True)

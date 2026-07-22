@@ -151,6 +151,28 @@ def test_prepare_upload_fast_path_returns_saved_currency():
     assert state["reporting_currency"] == "AUD"
     assert state["rates"]["USD"] == 1.5
 
+def test_confirm_gate_shows_currency_controls_and_gates():
+    from streamlit.testing.v1 import AppTest
+    script = (
+        "import os, sys\n"
+        "sys.path.insert(0, os.getcwd())\n"
+        "import pandas as pd, streamlit as st\n"
+        "from src.ui.upload import render_confirm_gate\n"
+        "st.session_state['upload_stage'] = 'confirm'\n"
+        "st.session_state['upload_df'] = pd.DataFrame({'c':['c1','c2'],'o':['o1','o2'],"
+        "'when':['2025-01-01','2025-01-02'],'amt':['10','10'],'cur':['USD','AUD']})\n"
+        "st.session_state['upload_mapping'] = {'customer_id':'c','order_id':'o',"
+        "'order_date':'when','order_amount':'amt','order_currency':'cur'}\n"
+        "st.session_state['upload_filename'] = 'f.csv'\n"
+        "render_confirm_gate(lambda *a, **k: None)\n"
+    )
+    at = AppTest.from_string(script, default_timeout=60).run()
+    assert not at.exception, f"confirm gate raised: {at.exception}"
+    assert "Reporting currency" in [s.label for s in at.selectbox], \
+        [s.label for s in at.selectbox]
+    assert any(n.label.startswith("1 USD") for n in at.number_input), \
+        [n.label for n in at.number_input]
+
 if __name__ == "__main__":
     test_app_boots_on_demo_zero_exceptions()
     test_confirm_gate_absent_on_demo_boot()
@@ -162,4 +184,5 @@ if __name__ == "__main__":
     test_confirm_gate_shows_locale_and_grain_radios()
     test_apply_mapping_forwards_and_persists_currency()
     test_prepare_upload_fast_path_returns_saved_currency()
+    test_confirm_gate_shows_currency_controls_and_gates()
     print("test_upload_flow: OK")
