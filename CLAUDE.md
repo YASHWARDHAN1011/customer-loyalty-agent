@@ -10,6 +10,54 @@ This file has two jobs:
 
 ## 📓 Project Journal
 
+### 2026-07-25 — Real-data validation: two crashes on a real Shopify export
+Drove a FAITHFUL Shopify "Orders" export through the full ingest path (the exact
+Australian-client scenario) instead of the tidy hand-built fixtures the tests
+used. A real export differs in ways the fixtures never exercised — and it surfaced
+**two crashes in the validator, the module whose whole contract is "never a stack
+trace, only human-readable messages."** Both are silent-until-real-file failures
+of the ingestion firewall.
+- **Mixed-timezone dates (DST).** Shopify's `Created at` is `2025-06-13 08:14:52
+  +1000`, and an AU file spanning the Oct/Apr daylight-saving switch MIXES offsets
+  (`+1000` winter / `+1100` summer). pandas 3.x **raises** `ValueError: Mixed
+  timezones detected` from `pd.to_datetime(..., errors="coerce")` — `errors="coerce"`
+  does NOT swallow it — crashing both `profiler._guess_kind` (upload step, before
+  the operator even sees the confirm screen) and `validator.validate` (the
+  firewall). **Fix:** new `validator.coerce_datetime(raw, dayfirst=False)` — strips
+  a trailing tz offset (`+1000`/`-05:00`/`Z`) BEFORE parsing, so (a) the order's
+  LOCAL calendar day is preserved (what a merchant means by the order date) and (b)
+  a mixed-offset column can't trip pandas; a `utc=True` branch is a belt-and-braces
+  fallback. Used by `validate` and `profiler._guess_kind`.
+- **String-dtype NA in the day-first inference.** The reader returns pandas'
+  `str` dtype, where `astype(str)` keeps a blank cell as NA (a float), NOT the
+  literal `"nan"`. `_infer_dayfirst` loops in Python and called `regex.match(nan)`
+  → `TypeError` on ANY real file with a blank in the date column (e.g. a Shopify
+  continuation row). The tidy fixtures used `""` (object dtype) so they never hit
+  it; the vectorised `.str` paths (`_clean_amount`, `coerce_datetime`) were already
+  NA-safe. **Fix:** `dropna()` before the loop.
+- **Positive validation (once fixed):** the full faithful export — order-level
+  fields (Email/Total/Created at) populated only on each order's FIRST row and
+  blank on continuation line rows, mixed DST tz, a parenthesised refund — flows
+  through with every hand-checked number correct: revenue reads each order's true
+  `Total` (continuation rows drop, so no under/over-count), refund clipped to 0,
+  dates land on the correct LOCAL day, basket size preserved across line rows,
+  Ann monetary 1185 / Bob 750.
+- **Two operator-facing caveats noted (NOT bugs, the confirm screen is the guard):**
+  the fuzzy auto-mapper picks `order_id -> Id` (Shopify's first-row-only numeric id)
+  and dumps the real repeated key `Name` into `product`; the operator must correct
+  this on the confirm screen. And the pipeline never multiplies `Lineitem price` x
+  `quantity`, so mapping amount->line-price undercounts — mapping amount->`Total`
+  (the sensible choice) is correct.
+- **Testing:** `tests/test_ingest.py` — `test_validate_mixed_timezone_dates`,
+  `test_profiler_mixed_timezone_dates`, `test_shopify_dst_export_end_to_end`,
+  `test_validate_blank_date_cell_from_reader` (132 checks). `tests/test_upload_flow.py`
+  — `test_apply_mapping_on_real_shopify_reader_output` drives the ACTUAL app seam
+  (`read_table` -> `apply_mapping`) with faithful reader dtypes. Built TDD (watched
+  each crash reproduce before fixing). Full no-network sweep green (40 suites); app
+  boots 0 exceptions, demo unchanged (206,209 customers). **Lesson reinforced:**
+  hand-built DataFrames hide reader-dtype and real-format failures — validate
+  against a file read through `read_table`, shaped like the real export.
+
 ### 2026-07-23 — BYOD depth pass: per-line customer/date conflict warnings
 The last collapse dimension made honest. When an upload is line-grained (several
 rows per `order_id`), `build_canonical` collapses to one row per order via

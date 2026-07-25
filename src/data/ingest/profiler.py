@@ -29,7 +29,8 @@ def _guess_kind(series: pd.Series) -> str:
         sample.str.replace(r"[$,]", "", regex=True), errors="coerce")
     if numeric.notna().mean() > 0.9:
         return "numeric"
-    dates = pd.to_datetime(sample, errors="coerce")
+    from src.data.ingest.validator import coerce_datetime
+    dates = coerce_datetime(sample)
     if dates.notna().mean() > 0.7:
         return "date"
     return "text"

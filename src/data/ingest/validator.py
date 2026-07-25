@@ -21,6 +21,29 @@ import pandas as pd
 # text-month formats are unambiguous and handled by pandas directly).
 _AMBIG_DATE = re.compile(r"^\s*(\d{1,2})[/-](\d{1,2})[/-]\d{2,4}\s*$")
 
+# A trailing timezone offset ("+1000", "-05:00", "Z"). Real exports (e.g.
+# Shopify "Created at": "2025-06-13 08:14:52 +1000") carry one, and an AU file
+# spanning a DST switch MIXES offsets (+1000 winter / +1100 summer) — which
+# makes pandas raise "Mixed timezones detected" even with errors="coerce".
+_TZ_SUFFIX = re.compile(r"\s*(?:Z|[+-]\d{2}:?\d{2})\s*$")
+
+
+def coerce_datetime(raw: pd.Series, dayfirst: bool = False) -> pd.Series:
+    """Parse a column of date strings to tz-naive datetimes, never raising.
+
+    A trailing timezone offset is stripped BEFORE parsing so (a) the order's
+    LOCAL calendar day is preserved (what a merchant means by the order date)
+    and (b) a column mixing offsets across a DST boundary cannot trip pandas'
+    mixed-timezone error. The `utc=True` branch is a belt-and-braces fallback
+    for any residual tz-aware content.
+    """
+    s = raw.astype(str).str.replace(_TZ_SUFFIX, "", regex=True)
+    try:
+        return pd.to_datetime(s, errors="coerce", dayfirst=dayfirst)
+    except (ValueError, TypeError):
+        out = pd.to_datetime(s, errors="coerce", dayfirst=dayfirst, utc=True)
+        return out.dt.tz_localize(None)
+
 
 def _infer_dayfirst(raw: pd.Series):
     """Decide day-first vs month-first from evidence in the column.
@@ -30,7 +53,10 @@ def _infer_dayfirst(raw: pd.Series):
     in which case we default to day-first and the caller warns.
     """
     saw_ambig = first_gt12 = second_gt12 = False
-    for v in raw.astype(str):
+    # dropna FIRST: under pandas' string dtype, astype(str) keeps NA as NA (a
+    # float), not the literal "nan", so a blank cell (e.g. a Shopify
+    # continuation row) would otherwise reach the regex as a float and raise.
+    for v in raw.dropna().astype(str):
         mtch = _AMBIG_DATE.match(v)
         if not mtch:
             continue
@@ -116,7 +142,7 @@ def validate(df: pd.DataFrame, mapping: dict, dayfirst=None, reporting_currency=
         resolved, ambiguous = _infer_dayfirst(raw_dates)
     else:
         resolved, ambiguous = dayfirst, False
-    dates = pd.to_datetime(raw_dates, errors="coerce", dayfirst=resolved)
+    dates = coerce_datetime(raw_dates, dayfirst=resolved)
     if ambiguous:
         warnings.append(
             f"Dates in column '{mapping['order_date']}' use an ambiguous "

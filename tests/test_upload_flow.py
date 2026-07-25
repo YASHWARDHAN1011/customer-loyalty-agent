@@ -173,6 +173,39 @@ def test_confirm_gate_shows_currency_controls_and_gates():
     assert any(n.label.startswith("1 USD") for n in at.number_input), \
         [n.label for n in at.number_input]
 
+def test_apply_mapping_on_real_shopify_reader_output():
+    """End-to-end through the ACTUAL app seam: a faithful Shopify export read by
+    read_table (pandas string dtype, blank continuation cells, mixed DST tz
+    offsets, a parenthesised refund) -> apply_mapping -> canonical. Guards the two
+    real-data crashes found by manual validation (mixed-tz + string-dtype NA)."""
+    from src.data.ingest.reader import read_table
+    header = "Name,Email,Currency,Total,Created at,Lineitem name\n"
+    rows = [
+        '"#1001","ann@x.com","AUD","1155.00","2025-06-13 08:14:52 +1000","Sofa"\n',
+        '"#1001","","","","","Cushion"\n',
+        '"#1001","","","","","Lamp"\n',
+        '"#2001","bob@x.com","AUD","750.00","2025-01-15 19:40:10 +1100","Desk"\n',
+        '"#2001","","","","","Chair"\n',
+        '"#2002","bob@x.com","AUD","($20.00)","2025-06-15 09:00:00 +1000","Return"\n',
+    ]
+    fl = io.BytesIO((header + "".join(rows)).encode()); fl.name = "orders_export.csv"
+    df = read_table(fl)
+    m = {"customer_id": "Email", "order_id": "Name", "order_date": "Created at",
+         "order_amount": "Total", "product": "Lineitem name",
+         "order_currency": "Currency"}
+    with tempfile.TemporaryDirectory() as d:
+        store = os.path.join(d, "mappings.json")
+        res = apply_mapping(df, m, store_path=store)
+    assert res["ok"] is True, res.get("errors")
+    o = res["orders"].set_index("order_id")
+    assert float(o.loc["#1001", "order_amount"]) == 1155.0
+    assert float(o.loc["#2001", "order_amount"]) == 750.0
+    assert float(o.loc["#2002", "order_amount"]) == 0.0        # refund clipped
+    assert o.loc["#1001", "order_date"].normalize() == pd.Timestamp("2025-06-13")
+    feats = res["matrix"].frame.set_index("customer_id")
+    assert int(feats.loc["bob@x.com", "frequency"]) == 2       # #2001 + #2002
+
+
 if __name__ == "__main__":
     test_app_boots_on_demo_zero_exceptions()
     test_confirm_gate_absent_on_demo_boot()
@@ -185,4 +218,5 @@ if __name__ == "__main__":
     test_apply_mapping_forwards_and_persists_currency()
     test_prepare_upload_fast_path_returns_saved_currency()
     test_confirm_gate_shows_currency_controls_and_gates()
+    test_apply_mapping_on_real_shopify_reader_output()
     print("test_upload_flow: OK")

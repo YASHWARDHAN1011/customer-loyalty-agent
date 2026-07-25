@@ -706,6 +706,103 @@ def test_build_canonical_warns_on_customer_and_date_conflicts():
         res["warnings"]
 
 
+def test_validate_mixed_timezone_dates():
+    """A real Shopify 'Created at' column mixes tz offsets across a DST switch
+    (AU winter +1000, summer +1100). pandas raises on mixed offsets even with
+    errors='coerce'; the validator firewall must NOT crash and must read each
+    order's LOCAL calendar date."""
+    from src.data.ingest.validator import validate
+    m = {"customer_id": "cust", "order_id": "ord",
+         "order_date": "when", "order_amount": "total"}
+    df = pd.DataFrame({
+        "cust": ["c1", "c2"],
+        "ord":  ["o1", "o2"],
+        "when": ["2025-06-13 08:14:52 +1000",   # AU winter
+                 "2025-01-15 19:40:10 +1100"],   # AU summer (DST)
+        "total": ["100", "200"]})
+    r = validate(df, m)   # must not raise
+    check("mixed-tz dates: validate ok", r.ok is True)
+    d = dict(zip(r.orders["order_id"], r.orders["order_date"]))
+    check("mixed-tz local date o1 = 13 June",
+          d["o1"].normalize() == pd.Timestamp("2025-06-13"))
+    check("mixed-tz local date o2 = 15 Jan",
+          d["o2"].normalize() == pd.Timestamp("2025-01-15"))
+    check("mixed-tz result is tz-naive",
+          getattr(r.orders["order_date"].dtype, "tz", None) is None)
+
+
+def test_profiler_mixed_timezone_dates():
+    """The upload profiler must survive a mixed-tz date column (it runs before
+    the operator even reaches the confirm screen) and still guess 'date'."""
+    from src.data.ingest.profiler import profile_columns
+    df = pd.DataFrame({
+        "Created at": ["2025-06-13 08:14:52 +1000",
+                       "2025-01-15 19:40:10 +1100",
+                       "2025-11-02 03:00:00 +1100"],
+        "Total": ["100", "200", "300"]})
+    profs = profile_columns(df)   # must not raise
+    by = {p["name"]: p for p in profs}
+    check("profiler mixed-tz -> date kind", by["Created at"]["guessed_kind"] == "date")
+
+
+def test_shopify_dst_export_end_to_end():
+    """A faithful Shopify orders export: order-level fields (Email/Total/Created
+    at) populated only on each order's FIRST row, blank on continuation line
+    rows; mixed tz offsets (DST); a parenthesised refund. Drive it through
+    build_canonical with the sensible mapping and hand-check every number."""
+    from src.data.ingest.builder import build_canonical
+    df = pd.DataFrame({
+        "Name":  ["#1001", "#1001", "#1001", "#1002", "#2001", "#2001", "#2002"],
+        "Email": ["ann@x.com", "", "", "ann@x.com", "bob@x.com", "", "bob@x.com"],
+        "Created at": ["2025-06-13 08:14:52 +1000", "", "",
+                       "2025-06-20 11:02:00 +1000",
+                       "2025-01-15 19:40:10 +1100", "",
+                       "2025-06-15 09:00:00 +1000"],
+        "Total": ["1155.00", "", "", "30.00", "750.00", "", "($20.00)"],
+        "Lineitem name": ["Sofa", "Cushion", "Lamp", "Mug", "Desk", "Chair", "Return"],
+    })
+    m = {"customer_id": "Email", "order_id": "Name", "order_date": "Created at",
+         "order_amount": "Total", "product": "Lineitem name"}
+    res = build_canonical(df, m)   # must not raise
+    check("Shopify DST export builds ok", res["ok"] is True)
+    o = res["orders"].set_index("order_id")
+    # Continuation rows (blank Total) drop; each order keeps its first-row Total.
+    check("#1001 total = 1155 (continuation rows dropped)",
+          float(o.loc["#1001", "order_amount"]) == 1155.0)
+    check("#2001 total = 750", float(o.loc["#2001", "order_amount"]) == 750.0)
+    check("#2002 refund clipped to 0", float(o.loc["#2002", "order_amount"]) == 0.0)
+    check("#1001 local date = 13 June",
+          o.loc["#1001", "order_date"].normalize() == pd.Timestamp("2025-06-13"))
+    check("#2001 local date = 15 Jan (DST row)",
+          o.loc["#2001", "order_date"].normalize() == pd.Timestamp("2025-01-15"))
+    feats = res["matrix"].frame.set_index("customer_id")
+    check("Ann frequency = 2", int(feats.loc["ann@x.com", "frequency"]) == 2)
+    check("Ann monetary = 1185", float(feats.loc["ann@x.com", "monetary"]) == 1185.0)
+    check("Bob frequency = 2", int(feats.loc["bob@x.com", "frequency"]) == 2)
+    check("Bob monetary = 750", float(feats.loc["bob@x.com", "monetary"]) == 750.0)
+
+
+def test_validate_blank_date_cell_from_reader():
+    """Real reader output uses pandas' string dtype, where astype(str) keeps a
+    blank cell as NA (not the literal 'nan'). A blank cell in the date column (a
+    Shopify continuation row) must not crash the _infer_dayfirst Python loop."""
+    import io
+    from src.data.ingest.reader import read_table
+    from src.data.ingest.validator import validate
+    csv = ('Name,Email,Created at,Total\n'
+           '"#1001","ann@x.com","13/06/2025","100"\n'
+           '"#1001","","","50"\n')
+    fl = io.BytesIO(csv.encode()); fl.name = "o.csv"
+    df = read_table(fl)
+    m = {"customer_id": "Email", "order_id": "Name",
+         "order_date": "Created at", "order_amount": "Total"}
+    r = validate(df, m)   # must not raise (regression: TypeError on float NA)
+    check("reader blank date cell: validate ok", r.ok is True)
+    check("blank continuation row dropped", len(r.orders) == 1)
+    check("day-first read from reader column",
+          r.orders["order_date"].iloc[0] == pd.Timestamp("2025-06-13"))
+
+
 def main():
     import tempfile
     with tempfile.TemporaryDirectory() as d:
@@ -753,6 +850,10 @@ def main():
     test_validate_single_currency_override_converts()
     test_build_canonical_threads_currency_end_to_end()
     test_build_canonical_warns_on_customer_and_date_conflicts()
+    test_validate_mixed_timezone_dates()
+    test_profiler_mixed_timezone_dates()
+    test_shopify_dst_export_end_to_end()
+    test_validate_blank_date_cell_from_reader()
     print(f"\n{_passed} checks passed.")
 
 
