@@ -10,6 +10,44 @@ This file has two jobs:
 
 ## 📓 Project Journal
 
+### 2026-07-25 — Auto-mapper: fix the Shopify order_id / Name-vs-product mis-pick
+Follow-on to the real-data validation pass. On a real Shopify header the fuzzy
+auto-mapper (the deterministic fallback used when the LLM mapper is unavailable)
+mis-picked the two columns manual validation had flagged: `order_id` fell to `Id`
+(Shopify's first-row-only numeric id — blank on continuation rows, which silently
+drops line items) because the true repeated key `Name` (#1001) scored **nothing**
+for `order_id` by name alone; `Name` then got grabbed by `product`, pushing out
+the real `Lineitem name`. Two small, principled scoring changes in
+`src/data/ingest/mapper.py` fix it with minimal regression surface:
+- **Exact-header domain hint.** `_EXACT_HEADER_HINTS = {"name": "order_id"}`, keyed
+  by the NORMALISED whole header, gives an exact `Name` an `order_id` score of 0.85
+  (`_HINT_SCORE`). It fires only on an exact match, so `Billing Name` / `Shipping
+  Name` / `Lineitem name` never trigger it. 0.85 sits **above** the weak `id`-
+  substring match (0.8) so `Name` beats `Id`, but **below** any explicit order-id
+  header (`Order ID` / `Order` = field-name/alias exact = 1.0), which still wins —
+  verified by `test_fuzzy_map_name_yields_to_explicit_order_id`.
+- **Graded substring score.** The flat 0.8 substring bucket couldn't tell that
+  `Lineitem quantity` belongs to `quantity`, not `product` — the product alias
+  `item` is a substring of every Shopify `Lineitem *` column, so once `order_id`
+  took `Name`, `product` greedily grabbed `Lineitem quantity`. Substring matches now
+  score `0.8 + 0.1 * (len(shorter)/len(longer))`, rewarding fuller-word coverage:
+  `Lineitem quantity`↔`quantity` (0.85) beats `Lineitem quantity`↔`item` (0.825), so
+  each `Lineitem *` column lands on its own field and `product` correctly falls to
+  `Lineitem name`. Stays in `[0.8, 0.9)`, below exact matches.
+- **Result:** a real Shopify header now auto-maps `order_id→Name`, `product→Lineitem
+  name`, `quantity→Lineitem quantity`, `customer_id→Email`, `order_amount→Total`,
+  `order_currency→Currency` — all correct — and `Billing Name` is correctly ignored.
+- **Residual (noted, not fixed):** a file whose ONLY id-ish column is a bare `Name`
+  meaning a person now gets guessed as `order_id` (was left blank); the confirm
+  screen still surfaces it for correction, and for the Shopify client it's right.
+  The LLM mapper (primary path) already handled this; the fix improves the fallback.
+- **Testing:** `tests/test_ingest.py` — `test_fuzzy_map_shopify_headers`,
+  `test_fuzzy_map_name_yields_to_explicit_order_id`,
+  `test_fuzzy_map_name_hint_is_exact_only` (140 checks). Built TDD (Shopify test
+  reproduced the mis-pick first). Full no-network sweep green (40 suites); every
+  existing mapper test (`test_fuzzy_map`, `_global_best`, `Product Name→product`)
+  still passes unchanged.
+
 ### 2026-07-25 — Real-data validation: two crashes on a real Shopify export
 Drove a FAITHFUL Shopify "Orders" export through the full ingest path (the exact
 Australian-client scenario) instead of the tidy hand-built fixtures the tests

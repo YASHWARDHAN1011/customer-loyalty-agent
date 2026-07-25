@@ -42,6 +42,15 @@ CANONICAL_FIELDS = {
 
 _MATCH_THRESHOLD = 0.5
 
+# Domain hints for headers that are unambiguous in an e-commerce ORDER export but
+# score nothing by name alone. Keyed by the NORMALISED, whole header (so it fires
+# only on an exact match, never as a substring of "Billing Name"/"Lineitem name").
+# 0.85 deliberately sits above the weak `id`-substring match (0.8) so Shopify's
+# repeated "Name" (#1001) beats its first-row-only "Id", yet below any explicit
+# order-id header (field-name or exact-alias match = 1.0), which still wins.
+_EXACT_HEADER_HINTS = {"name": "order_id"}
+_HINT_SCORE = 0.85
+
 
 def _norm(s: str) -> str:
     return re.sub(r"[^a-z0-9]", "", str(s).lower())
@@ -50,7 +59,9 @@ def _norm(s: str) -> str:
 def _score(header: str, field: str, aliases: list) -> float:
     """Best similarity of a header to a canonical field name or its aliases."""
     h = _norm(header)
-    best = 0.0
+    if not h:
+        return 0.0
+    best = _HINT_SCORE if _EXACT_HEADER_HINTS.get(h) == field else 0.0
     for target in [field.replace("_", "")] + aliases:
         t = _norm(target)
         if not t or not h:
@@ -58,7 +69,13 @@ def _score(header: str, field: str, aliases: list) -> float:
         if h == t:
             return 1.0
         if t in h or h in t:
-            best = max(best, 0.8)
+            # Graded substring: reward covering more of the header. A short alias
+            # buried in a long header (e.g. "item" inside "Lineitem quantity")
+            # scores below a fuller-word match ("quantity" inside the same
+            # header), so each Shopify "Lineitem *" column lands on its own field
+            # instead of all colliding on `product` via "item".
+            cover = min(len(h), len(t)) / max(len(h), len(t))
+            best = max(best, 0.8 + 0.1 * cover)
         best = max(best, SequenceMatcher(None, h, t).ratio())
     return best
 

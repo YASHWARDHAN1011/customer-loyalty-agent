@@ -93,6 +93,42 @@ def test_fuzzy_map_global_best():
     check("quantity mapped to qty", m["quantity"] == "Qty")
 
 
+def test_fuzzy_map_shopify_headers():
+    """A real Shopify Orders header: the order key is the repeated 'Name' (#1001),
+    not the first-row-only 'Id'; the product is 'Lineitem name', not 'Name'."""
+    from src.data.ingest.mapper import fuzzy_map
+    profile = [{"name": h} for h in
+               ["Name", "Email", "Financial Status", "Currency", "Subtotal",
+                "Total", "Created at", "Lineitem quantity", "Lineitem name", "Id"]]
+    m = fuzzy_map(profile)
+    check("shopify order_id -> Name", m["order_id"] == "Name")
+    check("shopify product -> Lineitem name", m["product"] == "Lineitem name")
+    check("shopify customer_id -> Email", m["customer_id"] == "Email")
+    check("shopify order_amount -> Total", m["order_amount"] == "Total")
+    check("shopify Id is NOT order_id", m["order_id"] != "Id")
+
+
+def test_fuzzy_map_name_yields_to_explicit_order_id():
+    """The 'Name' hint must lose to any explicit order-id column (regression guard)."""
+    from src.data.ingest.mapper import fuzzy_map
+    profile = [{"name": h} for h in
+               ["Name", "Order ID", "Email", "Total", "Order Date"]]
+    m = fuzzy_map(profile)
+    check("explicit Order ID wins order_id", m["order_id"] == "Order ID")
+
+
+def test_fuzzy_map_name_hint_is_exact_only():
+    """The hint fires only on an exact 'Name'; 'Billing Name'/'Lineitem name'
+    (a person / a product) must not be grabbed as order_id."""
+    from src.data.ingest.mapper import fuzzy_map
+    profile = [{"name": h} for h in
+               ["Billing Name", "Order No", "Email", "Total", "Order Date",
+                "Lineitem name"]]
+    m = fuzzy_map(profile)
+    check("Billing Name not order_id", m["order_id"] == "Order No")
+    check("product still -> Lineitem name", m["product"] == "Lineitem name")
+
+
 def test_propose_mapping_llm():
     from src.data.ingest.mapper import propose_mapping
     profile = [{"name": "Cust Ref", "guessed_kind": "text", "samples": ["1"],
@@ -812,6 +848,9 @@ def main():
     test_fuzzy_map()
     test_fuzzy_map_no_match()
     test_fuzzy_map_global_best()
+    test_fuzzy_map_shopify_headers()
+    test_fuzzy_map_name_yields_to_explicit_order_id()
+    test_fuzzy_map_name_hint_is_exact_only()
     test_propose_mapping_llm()
     test_propose_mapping_fallback()
     test_propose_mapping_nested_values()
