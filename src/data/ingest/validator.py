@@ -108,7 +108,8 @@ def _clean_amount(series: pd.Series) -> pd.Series:
     return pd.to_numeric(cleaned, errors="coerce")
 
 
-def validate(df: pd.DataFrame, mapping: dict, dayfirst=None, reporting_currency=None, rates=None) -> ValidationResult:
+def validate(df: pd.DataFrame, mapping: dict, dayfirst=None, reporting_currency=None,
+             rates=None, amount_is_unit_price=False) -> ValidationResult:
     errors, warnings = [], []
 
     missing = [f for f in REQUIRED if not mapping.get(f)]
@@ -159,6 +160,15 @@ def validate(df: pd.DataFrame, mapping: dict, dayfirst=None, reporting_currency=
 
     raw_amt = df[mapping["order_amount"]]
     amt = _clean_amount(raw_amt)
+
+    # --- Per-unit price x quantity. When the operator says the amount column is a
+    # per-UNIT price (not an order/line total), each row's revenue is price x its
+    # quantity. Missing/blank quantities default to 1 (one unit). Done here, before
+    # the currency block, so conversion and every downstream check see line revenue.
+    # A bad amount (NaN) x qty stays NaN and is still caught by the numeric check. ---
+    if amount_is_unit_price and mapping.get("quantity") and mapping["quantity"] in df.columns:
+        qty = _clean_amount(df[mapping["quantity"]]).fillna(1)
+        amt = amt * qty
 
     # --- Currency consolidation. Active ONLY when a currency column is mapped;
     # single-currency and no-column files are byte-for-byte unchanged. Conversion

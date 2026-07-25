@@ -444,6 +444,44 @@ def test_build_canonical_grain_override():
           any("first was kept" in w.lower() for w in res2["warnings"]))
 
 
+def test_validate_amount_times_quantity():
+    """When the amount column is a per-UNIT price, amount_is_unit_price=True
+    multiplies each row's amount by its quantity (missing qty -> 1) so per-line
+    revenue is correct before any collapse."""
+    from src.data.ingest.validator import validate
+    df = pd.DataFrame({"c": ["a", "a"], "o": ["1", "1"],
+                       "when": ["2025-01-01", "2025-01-01"],
+                       "price": ["50", "120"], "qty": ["2", "1"]})
+    m = {"customer_id": "c", "order_id": "o", "order_date": "when",
+         "order_amount": "price", "quantity": "qty"}
+    r = validate(df, m, amount_is_unit_price=True)
+    check("unit price x qty applied per row",
+          sorted(r.orders["order_amount"].tolist()) == [100.0, 120.0])
+    # Default (flag off) leaves the unit prices untouched.
+    r0 = validate(df, m)
+    check("default off does not multiply",
+          sorted(r0.orders["order_amount"].tolist()) == [50.0, 120.0])
+
+
+def test_build_canonical_unit_price_times_quantity():
+    """End-to-end: a per-unit-price line-item file with quantities sums to the
+    correct order total, and IDENTICAL unit lines are still summed (not collapsed
+    to one) so the fix can't fall into the repeated-total keep-one trap."""
+    from src.data.ingest.builder import build_canonical
+    df = pd.DataFrame({"c": ["a", "a", "b", "b"], "o": ["1", "1", "2", "2"],
+                       "when": ["2025-01-01", "2025-01-01", "2025-01-02", "2025-01-02"],
+                       "price": ["50", "120", "40", "40"], "qty": ["2", "1", "1", "1"]})
+    m = {"customer_id": "c", "order_id": "o", "order_date": "when",
+         "order_amount": "price", "quantity": "qty"}
+    res = build_canonical(df, m, amount_is_unit_price=True)
+    o = res["orders"].set_index("order_id")
+    # order 1 = 50*2 + 120*1 = 220
+    check("order 1 total = 220", float(o.loc["1", "order_amount"]) == 220.0)
+    # order 2 = 40*1 + 40*1 = 80 (identical lines SUMMED, not kept as 40)
+    check("order 2 identical unit lines summed to 80",
+          float(o.loc["2", "order_amount"]) == 80.0)
+
+
 def test_detect_grain():
     from src.data.ingest.builder import detect_grain
     import pandas as pd
@@ -870,6 +908,8 @@ def main():
     test_build_canonical_dedups_orders()
     test_build_canonical_sums_line_items()
     test_build_canonical_grain_override()
+    test_validate_amount_times_quantity()
+    test_build_canonical_unit_price_times_quantity()
     test_detect_grain()
     test_au_shopify_export_end_to_end()
     test_build_canonical_rejects_bad()

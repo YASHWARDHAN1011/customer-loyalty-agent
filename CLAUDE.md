@@ -10,6 +10,48 @@ This file has two jobs:
 
 ## 📓 Project Journal
 
+### 2026-07-25 — Ingest: per-unit-price × quantity revenue (operator-confirmed)
+The last caveat from the real-data validation pass. If the amount column is a
+per-UNIT line price (a raw line-items export with no order-total column: unit
+price + quantity per row), the pipeline summed unit prices and ignored quantity —
+a "Cushion qty 2 @ $50" line booked $50, not $100, silently under-counting
+revenue/monetary/AOV. Fixed as an **operator-confirmed** control (chosen over
+auto-multiply, which would silently DOUBLE revenue when the amount column is
+actually a line/order total — the exact failure class this tool forbids). Mirrors
+the existing locale/grain/currency override pattern.
+- **`validator.validate(..., amount_is_unit_price=False)`** — when True and a
+  quantity column is mapped, each row's revenue = coerced amount × coerced quantity
+  (missing/blank qty → 1), applied right after amount coercion and BEFORE the
+  currency block, so conversion and every numeric check see line revenue. A bad
+  amount (NaN) × qty stays NaN and is still caught. Default False = byte-identical
+  to before.
+- **`builder.build_canonical(..., amount_is_unit_price=False)`** threads the flag
+  and, when set, FORCES `grain="line_item"` (always sum): a per-unit-price file is
+  line-grained, and forcing the sum avoids the auto-rule collapsing two
+  coincidentally-equal line totals (e.g. 2 lines of 40×1) to one.
+- **`src/ui/upload.py`** — `apply_mapping`/`_build_and_activate` thread the flag;
+  `apply_mapping` persists it in the recipe `extras` on success; `prepare_upload`
+  fast-path replays `amount_is_unit_price` (so a recurring line-items file stays
+  correct even though the fast path skips confirm). The confirm screen's **Order
+  grain** radio gains a 4th option "Line-item — unit price × quantity", shown ONLY
+  when a quantity column is mapped; a guard resets the stored choice to Auto if the
+  option is withdrawn (quantity unmapped) so the keyed radio can't hold an invalid
+  value (the same Streamlit-crash class the locale/grain pass hit). Confirm maps the
+  option → `amount_is_unit_price=True` via `_unit_price_override()`.
+- **Trust invariant held:** revenue is still computed over real data; the operator
+  explicitly declares the amount column's meaning, so nothing multiplies (or
+  double-counts) silently. Demo + normal uploads (flag False) are unaffected.
+- **Testing:** `tests/test_ingest.py` — `test_validate_amount_times_quantity`
+  (per-row multiply + default-off unchanged), `test_build_canonical_unit_price_times_
+  quantity` (order totals correct + identical unit lines still summed, 144 checks).
+  `tests/test_upload_flow.py` — `test_apply_mapping_unit_price_persists_and_replays`
+  (threads + persists + fast-path replay), `test_confirm_gate_unit_price_option_only_
+  with_quantity` (AppTest: option present iff quantity mapped). Built TDD. Full sweep
+  green (40 suites); app boots 0 exceptions. **Runtime-verified** (the "run the real
+  app" lesson): drove the confirm gate — selected the unit-price option, clicked
+  Confirm — customer revenue came out 220 (50×2 + 120×1) and 120 (40×3), dataset
+  activated, 0 exceptions.
+
 ### 2026-07-25 — Auto-mapper: fix the Shopify order_id / Name-vs-product mis-pick
 Follow-on to the real-data validation pass. On a real Shopify header the fuzzy
 auto-mapper (the deterministic fallback used when the LLM mapper is unavailable)

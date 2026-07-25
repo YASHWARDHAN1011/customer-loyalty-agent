@@ -38,30 +38,36 @@ def prepare_upload(df, generate_fn, store_path=_STORE):
         return {"stage": "build", "mapping": recipe["mapping"], "source": "saved",
                 "profile": profile, "saved": True,
                 "reporting_currency": recipe.get("reporting_currency"),
-                "rates": recipe.get("rates")}
+                "rates": recipe.get("rates"),
+                "amount_is_unit_price": bool(recipe.get("amount_is_unit_price"))}
     proposed = propose_mapping(profile, generate_fn=generate_fn)
     return {"stage": "confirm", "mapping": proposed["mapping"],
             "source": proposed["source"], "profile": profile, "saved": False,
-            "reporting_currency": None, "rates": None}
+            "reporting_currency": None, "rates": None,
+            "amount_is_unit_price": False}
 
 
 def apply_mapping(df, mapping, store_path=_STORE, dayfirst=None, grain=None,
-                  reporting_currency=None, rates=None):
+                  reporting_currency=None, rates=None, amount_is_unit_price=False):
     """Validate + build canonical for a confirmed mapping.
 
-    `dayfirst`/`grain`/`reporting_currency`/`rates` are optional operator
-    overrides (None = auto / single-currency). On success, persists the mapping
-    recipe (with any currency settings) for next time. Returns the builder result
+    `dayfirst`/`grain`/`reporting_currency`/`rates`/`amount_is_unit_price` are
+    optional operator overrides (None/False = auto / single-currency / amount is
+    already a total). On success, persists the mapping recipe (with any currency
+    settings + the unit-price choice) for next time. Returns the builder result
     dict {ok, errors, warnings, orders, order_items, matrix, reporting_currency}.
     """
     result = build_canonical(df, mapping, dayfirst=dayfirst, grain=grain,
-                             reporting_currency=reporting_currency, rates=rates)
+                             reporting_currency=reporting_currency, rates=rates,
+                             amount_is_unit_price=amount_is_unit_price)
     if result["ok"]:
         extras = {}
         if reporting_currency:
             extras["reporting_currency"] = reporting_currency
         if rates:
             extras["rates"] = rates
+        if amount_is_unit_price:
+            extras["amount_is_unit_price"] = True
         save_mapping(list(df.columns), mapping, path=store_path,
                      extras=extras or None)
     return result
@@ -76,6 +82,9 @@ _FIELD_LABEL = {
     "quantity": "Quantity (optional)", "order_currency": "Currency (optional)",
 }
 
+
+# Grain-radio option that turns on per-unit-price × quantity revenue (line-item).
+_UNIT_PRICE_OPT = "Line-item — unit price × quantity"
 
 # Session keys owned by an in-progress upload (confirm screen state).
 _UPLOAD_KEYS = ("upload_stage", "upload_df", "upload_filename", "upload_mapping",
@@ -143,17 +152,20 @@ def render_upload_section(run_analysis):
         if prep["stage"] == "build":
             _build_and_activate(up.name, df, prep["mapping"], run_analysis,
                                 reporting_currency=prep.get("reporting_currency"),
-                                rates=prep.get("rates"))
+                                rates=prep.get("rates"),
+                                amount_is_unit_price=prep.get("amount_is_unit_price", False))
         else:
             st.session_state["upload_stage"] = "confirm"
         st.rerun()
 
 
 def _build_and_activate(filename, df, mapping, run_analysis, *, dayfirst=None,
-                        grain=None, reporting_currency=None, rates=None):
+                        grain=None, reporting_currency=None, rates=None,
+                        amount_is_unit_price=False):
     """Run apply_mapping; on success swap the active dataset + analyze."""
     result = apply_mapping(df, mapping, dayfirst=dayfirst, grain=grain,
-                           reporting_currency=reporting_currency, rates=rates)
+                           reporting_currency=reporting_currency, rates=rates,
+                           amount_is_unit_price=amount_is_unit_price)
     if not result["ok"]:
         st.session_state["upload_stage"] = "confirm"
         st.session_state["upload_errors"] = result["errors"]
@@ -227,10 +239,20 @@ def render_confirm_gate(run_analysis):
     detected_grain = detect_grain(df, chosen)
     grain_label = ("line-item — lines will be summed per order"
                    if detected_grain == "line_item" else "order-level (one row per order)")
-    st.radio("Order grain",
-             ["Auto", "Line-item — sum lines per order", "Order-level — one row per order"],
-             key="order_grain_choice")
+    grain_options = ["Auto", "Line-item — sum lines per order"]
+    # The unit-price option is only meaningful with a quantity column mapped.
+    if chosen.get("quantity"):
+        grain_options.append(_UNIT_PRICE_OPT)
+    grain_options.append("Order-level — one row per order")
+    # If a prior selection is no longer offered (e.g. quantity was unmapped after
+    # picking unit-price), reset it so the keyed radio can't hold an invalid value.
+    if st.session_state.get("order_grain_choice") not in grain_options:
+        st.session_state["order_grain_choice"] = "Auto"
+    st.radio("Order grain", grain_options, key="order_grain_choice")
     st.caption(f"Detected: {grain_label}")
+    if st.session_state.get("order_grain_choice") == _UNIT_PRICE_OPT:
+        st.caption("Each line's amount is a per-unit price; revenue = price × quantity, "
+                   "summed per order.")
 
     def _dayfirst_override():
         c = st.session_state.get("date_locale_choice", "Auto")
@@ -247,6 +269,9 @@ def render_confirm_gate(run_analysis):
         if c.startswith("Order-level"):
             return "order_level"
         return None
+
+    def _unit_price_override():
+        return st.session_state.get("order_grain_choice", "Auto") == _UNIT_PRICE_OPT
 
     # --- Currencies: detect + collect operator rates; gate Confirm on completeness. ---
     from src.data.ingest.currency import (
@@ -284,7 +309,8 @@ def render_confirm_gate(run_analysis):
                  disabled=not currency_ready):
         _build_and_activate(fname, df, chosen, run_analysis,
                             dayfirst=_dayfirst_override(), grain=_grain_override(),
-                            reporting_currency=reporting_currency, rates=rates)
+                            reporting_currency=reporting_currency, rates=rates,
+                            amount_is_unit_price=_unit_price_override())
         st.rerun()
     if c2.button("Cancel", use_container_width=True):
         _clear_upload_state(reset_uploader=True)

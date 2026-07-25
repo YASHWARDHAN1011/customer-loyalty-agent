@@ -173,6 +173,55 @@ def test_confirm_gate_shows_currency_controls_and_gates():
     assert any(n.label.startswith("1 USD") for n in at.number_input), \
         [n.label for n in at.number_input]
 
+def test_apply_mapping_unit_price_persists_and_replays():
+    """amount_is_unit_price threads through apply_mapping (correct totals), is
+    persisted in the recipe, and replays on a same-shaped re-upload's fast path."""
+    csv = ("Cust,Ord,When,UnitPrice,Qty\n"
+           "1,100,2024-01-01,50,2\n"
+           "1,100,2024-01-01,120,1\n"
+           "2,101,2024-02-01,40,3\n")
+    df = pd.read_csv(io.StringIO(csv), dtype=str)
+    mapping = {"customer_id": "Cust", "order_id": "Ord", "order_date": "When",
+               "order_amount": "UnitPrice", "quantity": "Qty"}
+    with tempfile.TemporaryDirectory() as d:
+        store = os.path.join(d, "mappings.json")
+        res = apply_mapping(df, mapping, store_path=store, amount_is_unit_price=True)
+        assert res["ok"] is True
+        o = res["orders"].set_index("order_id")
+        assert float(o.loc["100", "order_amount"]) == 220.0   # 50*2 + 120*1
+        assert float(o.loc["101", "order_amount"]) == 120.0   # 40*3
+        # Fast path on re-upload replays the persisted flag.
+        state = prepare_upload(df, generate_fn=_fake_generate, store_path=store)
+        assert state["stage"] == "build"
+        assert state["amount_is_unit_price"] is True
+
+
+def test_confirm_gate_unit_price_option_only_with_quantity():
+    """The 'unit price x quantity' grain option appears only when a quantity
+    column is mapped (else it's meaningless)."""
+    from streamlit.testing.v1 import AppTest
+    script = (
+        "import pandas as pd, streamlit as st\n"
+        "from src.ui.upload import render_confirm_gate\n"
+        "st.session_state['upload_stage'] = 'confirm'\n"
+        "st.session_state['top_pct'] = 20\n"
+        "st.session_state['upload_df'] = pd.DataFrame({\n"
+        "  'Cust':['1','1'],'Ord':['100','100'],'When':['2024-01-01','2024-01-01'],\n"
+        "  'UnitPrice':['50','120'],'Qty':['2','1']})\n"
+        "st.session_state['upload_filename'] = 'f.csv'\n"
+        "st.session_state['upload_mapping'] = {'customer_id':'Cust','order_id':'Ord',\n"
+        "  'order_date':'When','order_amount':'UnitPrice','quantity':'Qty'}\n"
+        "render_confirm_gate(lambda *a, **k: None)\n"
+    )
+    at = AppTest.from_string(script, default_timeout=60).run()
+    assert not at.exception, f"confirm gate raised: {at.exception}"
+    grain_opts = []
+    for r in at.radio:
+        if r.label == "Order grain":
+            grain_opts = list(r.options)
+    assert any("unit price" in o.lower() for o in grain_opts), grain_opts
+
+
 def test_apply_mapping_on_real_shopify_reader_output():
     """End-to-end through the ACTUAL app seam: a faithful Shopify export read by
     read_table (pandas string dtype, blank continuation cells, mixed DST tz
@@ -219,4 +268,6 @@ if __name__ == "__main__":
     test_prepare_upload_fast_path_returns_saved_currency()
     test_confirm_gate_shows_currency_controls_and_gates()
     test_apply_mapping_on_real_shopify_reader_output()
+    test_apply_mapping_unit_price_persists_and_replays()
+    test_confirm_gate_unit_price_option_only_with_quantity()
     print("test_upload_flow: OK")

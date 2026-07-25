@@ -47,7 +47,8 @@ def detect_grain(df, mapping):
 
 
 def build_canonical(df, mapping, dayfirst=None, grain=None,
-                    reporting_currency=None, rates=None) -> dict:
+                    reporting_currency=None, rates=None,
+                    amount_is_unit_price=False) -> dict:
     """Validate + build. Returns {ok, errors, warnings, orders, order_items,
     matrix, reporting_currency}; matrix/orders are None when validation fails.
 
@@ -57,9 +58,16 @@ def build_canonical(df, mapping, dayfirst=None, grain=None,
       from a single detected currency; a multi-currency file then needs `rates`).
     rates: {code: rate-to-reporting-currency} for multi-currency files. Missing
       rates gate the build to a clean error (never a silent wrong number).
+    amount_is_unit_price: the amount column is a per-unit price -> multiply each
+      line by its quantity (in the validator) and always SUM lines per order (a
+      unit-price file is line-grained; forcing sum avoids the auto-rule collapsing
+      two coincidentally-equal line totals to one).
     """
     result = validate(df, mapping, dayfirst=dayfirst,
-                      reporting_currency=reporting_currency, rates=rates)
+                      reporting_currency=reporting_currency, rates=rates,
+                      amount_is_unit_price=amount_is_unit_price)
+    if amount_is_unit_price:
+        grain = "line_item"
     if not result.ok:
         return {"ok": False, "errors": result.errors, "warnings": result.warnings,
                 "orders": None, "order_items": None, "matrix": None,
