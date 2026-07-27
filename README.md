@@ -25,16 +25,28 @@ figure.
 
 ## Run locally
 
-The virtualenv lives in the outer directory; launch from this inner directory so
-data paths resolve correctly:
+Requires Python 3.11+. From a fresh clone (repo root, where `app.py` lives):
 
 ```powershell
-# From customer-loyalty-agent/customer-loyalty-agent/
-..\venv\Scripts\python.exe -m streamlit run app.py
+# Windows (PowerShell)
+python -m venv venv
+venv\Scripts\python.exe -m pip install -r requirements.txt
+venv\Scripts\python.exe -m streamlit run app.py
 ```
 
-On first run it reads the committed canonical demo artifacts under
-`data/artifacts/canonical/` (fast). Add API keys in a `.env` in this directory:
+```bash
+# macOS / Linux
+python3 -m venv venv
+venv/bin/pip install -r requirements.txt
+venv/bin/python -m streamlit run app.py
+```
+
+The app opens at http://localhost:8501. On first run it reads the committed
+canonical demo artifacts under `data/artifacts/canonical/` (fast) — it runs on the
+demo dataset even before you add any API keys (the chat agent needs a key; the
+dashboards and upload flow do not).
+
+Add API keys in a `.env` file in the repo root to enable the chat agent:
 
 ```
 GEMINI_KEY_1=your_key           # up to GEMINI_KEY_10
@@ -70,9 +82,11 @@ Get a free Gemini key at https://aistudio.google.com/apikey.
 Standalone scripts (no network), each exits non-zero on failure, e.g.:
 
 ```powershell
-..\venv\Scripts\python.exe tests/test_query.py
-..\venv\Scripts\python.exe tests/test_recipes.py
-..\venv\Scripts\python.exe tests/test_tools_canonical.py
+venv\Scripts\python.exe tests/test_query.py
+venv\Scripts\python.exe tests/test_recipes.py
+venv\Scripts\python.exe tests/test_tools_canonical.py
 ```
+
+`tests/test_gemini.py` is the only one that needs a live API key.
 
 See `CLAUDE.md` for the full architecture reference and project journal.
